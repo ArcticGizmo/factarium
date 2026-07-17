@@ -5,10 +5,10 @@
     shape    -> a metric query reads a number out
     (render) -> printed here; a real renderer would run the same query()
 
-Run:  pip install duckdb && python demo.py
+Run:  uv run python storage-seam/demo.py   (or: pip install duckdb && python demo.py)
 
-Note: this has NOT been executed here — it's a reference spike. If a call
-signature is off against your installed duckdb version, it'll surface on first run.
+Verified against duckdb 1.5.4 — produces the output documented in
+storage-seam/README.md.
 """
 
 from __future__ import annotations
