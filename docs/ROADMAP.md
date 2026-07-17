@@ -103,9 +103,10 @@ Dumb by design; all logic one layer down. **Embed, don't build** (sharp edge #1)
   - [ ] Query/metrics API that flows `RequestContext` and calls `Authorizer.authorize()` before returning data
 - **P2 — Serve the SPA**
   - [ ] Serve a compiled web UI from the same origin as the API (avoids CORS/cookie pain)
-- **P3 — Embed a renderer**
-  - [ ] Evaluate Evidence.dev vs Observable Framework against the seam; pick one (new ADR)
-  - [ ] First dashboard rendering a real metric
+- **P3 — Embed a renderer** 🟡
+  - [x] Evaluate Evidence.dev vs Observable Framework; decision in [ADR 0002](./decisions/0002-renderer-evidence-and-rebuild-on-sync.md) → **Evidence.dev**, rebuild-on-sync, renderer reads materialised metric outputs
+  - [ ] Materialise a metric to a table/view + point a minimal Evidence project at the DuckDB file (spike)
+  - [ ] First dashboard rendering a real metric (`pr_cycle_time` over `ArcticGizmo/perch`)
 - **P4 — Hardening for remote**
   - [ ] TLS/reverse-proxy story, bind-address config, security headers
 
