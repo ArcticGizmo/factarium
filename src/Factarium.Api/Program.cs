@@ -2,6 +2,7 @@ using Factarium.Api.Security;
 using Factarium.Application.Security;
 using Factarium.Infrastructure;
 using Factarium.Infrastructure.Persistence;
+using Factarium.Integrations;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
@@ -20,6 +21,7 @@ try
         .WriteTo.Console());
 
     builder.Services.AddFactariumInfrastructure(builder.Configuration);
+    builder.Services.AddFactariumIntegrations();
     builder.Services.AddSingleton<ICurrentUserAccessor, LocalCurrentUserAccessor>();
 
     // Authorization seam: policies are declared now (permissive in local mode) so
