@@ -4,10 +4,20 @@ Quick, transparent, dev-centric metrics: **sync → transform → aggregate → 
 on a single Postgres. See [`docs/objective.md`](docs/objective.md) for the vision and
 [`docs/implementation-plan.md`](docs/implementation-plan.md) for the phased roadmap.
 
-> Status: **Phase 1 — sync foundation.** On top of the Phase 0 skeleton: the
-> bronze-tier raw store, the pull/push sync abstraction, a GitHub connector, a
-> deterministic fake-data generator, snapshot/restore tooling, and Quartz-scheduled
-> syncs with a manage/trigger API. Transforms + dashboards arrive in Phase 2.
+> Status: **Phase 2 — first dashboard.** The full `sync → transform → aggregate →
+> render` loop works on GitHub data: raw records become canonical entities, roll up
+> into daily metrics, and render as a Repo/PR Activity dashboard (vue-echarts). Each
+> actor becomes a mappable identity; linking identities to a Person re-attributes
+> their activity. Jira + DORA metrics come in Phase 3.
+
+## Try the full loop (with sample data)
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d postgres
+dotnet run --project src/Factarium.Cli -- seed          # deterministic GitHub-shaped data
+dotnet run --project src/Factarium.Cli -- pipeline run  # transform + aggregate
+dotnet run --project src/Factarium.Api                  # dashboard at http://localhost:8080
+```
 
 ## Stack
 

@@ -1,11 +1,13 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import VChart from 'vue-echarts'
 import IntegrationsPanel from './components/IntegrationsPanel.vue'
+import RepoActivityDashboard from './components/RepoActivityDashboard.vue'
+import IdentityMappingPanel from './components/IdentityMappingPanel.vue'
 
 const health = ref(null)
 const me = ref(null)
 const error = ref(null)
+const dashboard = ref(null)
 
 async function load() {
   try {
@@ -20,21 +22,12 @@ async function load() {
   }
 }
 
-onMounted(load)
-
-// Placeholder series until real materialized metrics arrive in Phase 2.
-const chartOption = {
-  tooltip: { trigger: 'axis' },
-  grid: { left: 40, right: 16, top: 24, bottom: 24 },
-  xAxis: {
-    type: 'category',
-    data: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-  },
-  yAxis: { type: 'value' },
-  series: [
-    { name: 'Commits', type: 'line', smooth: true, data: [3, 5, 2, 8, 6, 1, 4] },
-  ],
+// When identity mappings change, re-pull the dashboard (metrics were re-aggregated).
+function onMappingChanged() {
+  dashboard.value?.load()
 }
+
+onMounted(load)
 </script>
 
 <template>
@@ -55,40 +48,23 @@ const chartOption = {
 
     <v-main>
       <v-container>
+        <div class="text-caption text-medium-emphasis mb-3">
+          sync · transform · aggregate · render{{ me ? ` — signed in as ${me.displayName}` : '' }}
+        </div>
+        <div v-if="error" class="text-error mb-2">API error: {{ error }}</div>
+
         <v-row>
           <v-col cols="12">
-            <v-card>
-              <v-card-title>
-                Welcome<span v-if="me">, {{ me.displayName }}</span>
-              </v-card-title>
-              <v-card-subtitle>sync · transform · aggregate · render</v-card-subtitle>
-              <v-card-text>
-                Phase 0 walking skeleton — the API, database, and SPA are wired end to end.
-                Real dashboards arrive from Phase 2.
-                <div v-if="error" class="text-error mt-2">API error: {{ error }}</div>
-              </v-card-text>
-            </v-card>
+            <RepoActivityDashboard ref="dashboard" />
           </v-col>
-
+          <v-col cols="12">
+            <IdentityMappingPanel @changed="onMappingChanged" />
+          </v-col>
           <v-col cols="12">
             <IntegrationsPanel />
-          </v-col>
-
-          <v-col cols="12">
-            <v-card title="Sample metric (placeholder)">
-              <v-card-text>
-                <v-chart class="chart" :option="chartOption" autoresize />
-              </v-card-text>
-            </v-card>
           </v-col>
         </v-row>
       </v-container>
     </v-main>
   </v-app>
 </template>
-
-<style>
-.chart {
-  height: 320px;
-}
-</style>

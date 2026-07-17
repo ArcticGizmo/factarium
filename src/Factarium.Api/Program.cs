@@ -102,6 +102,9 @@ try
     });
 
     app.MapIntegrationEndpoints();
+    app.MapPeopleEndpoints();
+    app.MapDashboardEndpoints();
+    app.MapPipelineEndpoints();
 
     // SPA fallback: any non-API route serves index.html for client-side routing.
     app.MapFallbackToFile("index.html");
