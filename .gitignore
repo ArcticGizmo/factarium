@@ -79,12 +79,3 @@ ipython_config.py
 # Celery
 celerybeat-schedule
 celerybeat.pid
-
-# uv
-# The virtualenv uv creates is disposable — rebuild it with `uv sync`.
-.venv/
-# uv.lock is intentionally committed (not ignored) so the resolved dependency
-# set is reproducible across machines.
-# uv pins the interpreter in .python-version and expects it committed, so undo
-# the pyenv ignore rule above for it.
-!.python-version

@@ -5,7 +5,7 @@
     shape    -> a metric query reads a number out
     (render) -> printed here; a real renderer would run the same query()
 
-Run:  uv run python storage-seam/demo.py   (or: pip install duckdb && python demo.py)
+Run:  pip install duckdb && python demo.py
 
 Verified against duckdb 1.5.4 — produces the output documented in
 storage-seam/README.md.
