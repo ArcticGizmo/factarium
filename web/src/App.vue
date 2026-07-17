@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import VChart from 'vue-echarts'
+import IntegrationsPanel from './components/IntegrationsPanel.vue'
 
 const health = ref(null)
 const me = ref(null)
@@ -67,6 +68,10 @@ const chartOption = {
                 <div v-if="error" class="text-error mt-2">API error: {{ error }}</div>
               </v-card-text>
             </v-card>
+          </v-col>
+
+          <v-col cols="12">
+            <IntegrationsPanel />
           </v-col>
 
           <v-col cols="12">

@@ -1,9 +1,12 @@
+using Factarium.Api.Endpoints;
+using Factarium.Api.Scheduling;
 using Factarium.Api.Security;
 using Factarium.Application.Security;
 using Factarium.Infrastructure;
 using Factarium.Infrastructure.Persistence;
 using Factarium.Integrations;
 using Microsoft.EntityFrameworkCore;
+using Quartz;
 using Serilog;
 
 Log.Logger = new LoggerConfiguration()
@@ -23,6 +26,13 @@ try
     builder.Services.AddFactariumInfrastructure(builder.Configuration);
     builder.Services.AddFactariumIntegrations();
     builder.Services.AddSingleton<ICurrentUserAccessor, LocalCurrentUserAccessor>();
+
+    // Background scheduling: Quartz executes integration syncs; our DB holds the schedule.
+    builder.Services.AddQuartz();
+    builder.Services.AddQuartzHostedService(options => options.WaitForJobsToComplete = true);
+    builder.Services.AddTransient<IntegrationSyncJob>();
+    builder.Services.AddSingleton<IIntegrationScheduler, QuartzIntegrationScheduler>();
+    builder.Services.AddHostedService<SchedulerStartup>();
 
     // Authorization seam: policies are declared now (permissive in local mode) so
     // endpoints can carry RequireAuthorization(...) without a rewrite later.
@@ -81,6 +91,8 @@ try
             user.Roles,
         });
     });
+
+    app.MapIntegrationEndpoints();
 
     // SPA fallback: any non-API route serves index.html for client-side routing.
     app.MapFallbackToFile("index.html");

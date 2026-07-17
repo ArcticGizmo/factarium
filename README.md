@@ -4,9 +4,10 @@ Quick, transparent, dev-centric metrics: **sync → transform → aggregate → 
 on a single Postgres. See [`docs/objective.md`](docs/objective.md) for the vision and
 [`docs/implementation-plan.md`](docs/implementation-plan.md) for the phased roadmap.
 
-> Status: **Phase 0 — walking skeleton.** The API, database, and Vue SPA are wired
-> end to end and ship two ways (docker-compose and a self-contained single-exe).
-> Real data sync/transform/dashboards arrive from Phase 1 onward.
+> Status: **Phase 1 — sync foundation.** On top of the Phase 0 skeleton: the
+> bronze-tier raw store, the pull/push sync abstraction, a GitHub connector, a
+> deterministic fake-data generator, snapshot/restore tooling, and Quartz-scheduled
+> syncs with a manage/trigger API. Transforms + dashboards arrive in Phase 2.
 
 ## Stack
 
@@ -28,6 +29,9 @@ docker compose -f deploy/docker-compose.yml up -d postgres
 
 # 2. Apply migrations + seed the local user
 dotnet run --project src/Factarium.Cli -- db migrate
+
+# (optional) Load deterministic sample GitHub data so dashboards have something to show
+dotnet run --project src/Factarium.Cli -- seed
 
 # 3a. Run the API (serves built SPA + JSON API) at http://localhost:8080
 dotnet run --project src/Factarium.Api
