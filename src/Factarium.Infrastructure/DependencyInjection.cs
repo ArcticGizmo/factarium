@@ -1,9 +1,16 @@
+using Factarium.Application.Seeding;
 using Factarium.Application.Security;
+using Factarium.Application.Sync;
 using Factarium.Domain.Identity;
+using Factarium.Infrastructure.Seeding;
 using Factarium.Infrastructure.Persistence;
+using Factarium.Infrastructure.Security;
+using Factarium.Infrastructure.Sync;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Factarium.Infrastructure;
 
@@ -18,6 +25,20 @@ public static class DependencyInjection
     {
         var connectionString = ResolveConnectionString(configuration);
         services.AddDbContext<FactariumDbContext>(options => options.UseNpgsql(connectionString));
+
+        services.TryAddSingleton(TimeProvider.System);
+
+        // Encrypt integration credentials at rest; key ring persists in Postgres
+        // so tokens stay decryptable across restarts and shared-DB machines.
+        services.AddDataProtection()
+            .PersistKeysToDbContext<FactariumDbContext>()
+            .SetApplicationName("Factarium");
+
+        services.AddScoped<ICredentialProtector, DataProtectionCredentialProtector>();
+        services.AddScoped<IRawRecordSink, EfRawRecordSink>();
+        services.AddScoped<IIntegrationSyncService, IntegrationSyncService>();
+        services.AddScoped<ISampleDataSeeder, SampleDataSeeder>();
+
         return services;
     }
 
