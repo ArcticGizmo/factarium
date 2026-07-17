@@ -79,3 +79,12 @@ ipython_config.py
 # Celery
 celerybeat-schedule
 celerybeat.pid
+
+# Node / TypeScript
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+# local DuckDB database files (the app's data, not source)
+*.duckdb
+*.duckdb.wal
