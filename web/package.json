@@ -1,0 +1,22 @@
+{
+  "name": "factarium-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@mdi/font": "^7.4.47",
+    "echarts": "^6.1.0",
+    "vue": "^3.5.40",
+    "vue-echarts": "^8.0.1",
+    "vuetify": "^4.1.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.8",
+    "vite": "^8.1.5"
+  }
+}

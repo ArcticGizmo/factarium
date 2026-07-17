@@ -79,3 +79,21 @@ ipython_config.py
 # Celery
 celerybeat-schedule
 celerybeat.pid
+
+# --- .NET ---
+[Bb]in/
+[Oo]bj/
+*.user
+.vs/
+artifacts/
+
+# --- Node / Vue ---
+node_modules/
+web/dist/
+
+# --- Factarium generated / local ---
+# SPA build output served by the API host (rebuilt by `npm run build` / docker / CI)
+src/Factarium.Api/wwwroot/
+# Local pg_dump snapshots (Phase 1)
+snapshots/*
+!snapshots/.gitkeep

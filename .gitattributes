@@ -1,0 +1,20 @@
+# Normalize line endings: repo stores LF, checkout is platform-appropriate.
+* text=auto eol=lf
+
+# Scripts that MUST stay LF (executed by bash in Docker/CI).
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Windows-native scripts stay CRLF.
+*.ps1 text eol=crlf
+
+# Binary assets — never touch.
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary

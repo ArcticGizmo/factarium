@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Factarium.Api/Factarium.Api.csproj" />
+    <Project Path="src/Factarium.Application/Factarium.Application.csproj" />
+    <Project Path="src/Factarium.Cli/Factarium.Cli.csproj" />
+    <Project Path="src/Factarium.Domain/Factarium.Domain.csproj" />
+    <Project Path="src/Factarium.Infrastructure/Factarium.Infrastructure.csproj" />
+    <Project Path="src/Factarium.Integrations/Factarium.Integrations.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Factarium.Tests/Factarium.Tests.csproj" />
+  </Folder>
+</Solution>

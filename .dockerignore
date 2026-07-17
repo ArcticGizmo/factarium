@@ -1,0 +1,8 @@
+**/bin
+**/obj
+web/node_modules
+web/dist
+src/Factarium.Api/wwwroot
+snapshots
+.git
+.vs
