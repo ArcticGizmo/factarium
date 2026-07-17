@@ -1,5 +1,7 @@
 using Factarium.Application.Seeding;
+using Factarium.Cli;
 using Factarium.Infrastructure;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -14,6 +16,12 @@ switch (command)
 
     case "seed":
         return await RunSeedAsync(args);
+
+    case "snapshot":
+        return await SnapshotCommands.SnapshotAsync(args, GetDbConnection(args));
+
+    case "restore":
+        return await SnapshotCommands.RestoreAsync(args, GetDbConnection(args));
 
     case "help":
     case "-h":
@@ -78,6 +86,17 @@ static IHost BuildHost(string[] args)
     return builder.Build();
 }
 
+static DbConnectionInfo GetDbConnection(string[] args)
+{
+    var config = new ConfigurationBuilder()
+        .SetBasePath(AppContext.BaseDirectory)
+        .AddJsonFile("appsettings.json", optional: true)
+        .AddEnvironmentVariables()
+        .Build();
+
+    return DbConnectionInfo.Parse(DependencyInjection.ResolveConnectionString(config));
+}
+
 static int IntArg(string[] args, string name, int fallback)
 {
     var index = Array.IndexOf(args, name);
@@ -98,7 +117,13 @@ static void PrintUsage()
         Usage:
           factarium db migrate                 Apply pending EF Core migrations and seed local defaults.
           factarium seed [options]             Populate the database with deterministic sample GitHub data.
+          factarium snapshot [--name N]        Dump the database to snapshots/<name>.dump (via pg_dump).
+          factarium restore --name N           Restore a snapshot (via pg_restore, --clean).
           factarium help                       Show this help.
+
+        Snapshot options:
+          --name <name>       Snapshot name (default <db>-<timestamp>)
+          --container <name>  Postgres container to exec into (default factarium-postgres-1)
 
         Seed options:
           --seed <int>     RNG seed (default 1337; same seed => same data)
