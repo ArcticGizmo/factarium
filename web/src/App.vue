@@ -1,9 +1,10 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import IntegrationsPanel from './components/IntegrationsPanel.vue'
+import LiveSummaryPanel from './components/LiveSummaryPanel.vue'
 import RepoActivityDashboard from './components/RepoActivityDashboard.vue'
 import DeliveryDashboard from './components/DeliveryDashboard.vue'
 import IdentityMappingPanel from './components/IdentityMappingPanel.vue'
+import SchedulesPanel from './components/SchedulesPanel.vue'
 
 const health = ref(null)
 const me = ref(null)
@@ -24,8 +25,8 @@ async function load() {
   }
 }
 
-// When identity mappings change, re-pull the dashboard (metrics were re-aggregated).
-function onMappingChanged() {
+// Re-pull dashboards after anything that changes the aggregates (mapping, pipeline run).
+function refreshDashboards() {
   dashboard.value?.load()
   delivery.value?.load()
 }
@@ -58,16 +59,19 @@ onMounted(load)
 
         <v-row>
           <v-col cols="12">
+            <LiveSummaryPanel />
+          </v-col>
+          <v-col cols="12">
             <RepoActivityDashboard ref="dashboard" />
           </v-col>
           <v-col cols="12">
             <DeliveryDashboard ref="delivery" />
           </v-col>
           <v-col cols="12">
-            <IdentityMappingPanel @changed="onMappingChanged" />
+            <IdentityMappingPanel @changed="refreshDashboards" />
           </v-col>
           <v-col cols="12">
-            <IntegrationsPanel />
+            <SchedulesPanel @changed="refreshDashboards" />
           </v-col>
         </v-row>
       </v-container>

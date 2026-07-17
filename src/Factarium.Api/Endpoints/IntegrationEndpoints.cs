@@ -15,6 +15,12 @@ public sealed record CreateIntegrationRequest(
     Dictionary<string, string?>? Settings,
     string? Credential);
 
+public sealed record UpdateIntegrationRequest(
+    bool Enabled,
+    string? Cron,
+    Dictionary<string, string?>? Settings,
+    string? Credential);
+
 public static class IntegrationEndpoints
 {
     public static IEndpointRouteBuilder MapIntegrationEndpoints(this IEndpointRouteBuilder app)
@@ -84,6 +90,39 @@ public static class IntegrationEndpoints
             }
 
             return Results.Created($"/api/integrations/{integration.Id}", new { integration.Id });
+        });
+
+        group.MapPut("{id:guid}", async (
+            Guid id,
+            UpdateIntegrationRequest request,
+            FactariumDbContext db,
+            ICredentialProtector protector,
+            IIntegrationScheduler scheduler,
+            CancellationToken ct) =>
+        {
+            var integration = await db.Integrations.FindAsync([id], ct);
+            if (integration is null)
+            {
+                return Results.NotFound();
+            }
+
+            integration.Enabled = request.Enabled;
+            integration.ScheduleCron = string.IsNullOrWhiteSpace(request.Cron) ? null : request.Cron;
+            if (request.Settings is not null)
+            {
+                integration.SettingsJson = JsonSerializer.Serialize(request.Settings);
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Credential))
+            {
+                integration.EncryptedCredential = protector.Protect(request.Credential);
+            }
+
+            await db.SaveChangesAsync(ct);
+
+            // Reschedules or unschedules based on the new enabled/cron state.
+            await scheduler.ScheduleAsync(integration, ct);
+            return Results.NoContent();
         });
 
         group.MapPost("{id:guid}/sync", async (
