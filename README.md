@@ -4,12 +4,13 @@ Quick, transparent, dev-centric metrics: **sync → transform → aggregate → 
 on a single Postgres. See [`docs/objective.md`](docs/objective.md) for the vision and
 [`docs/implementation-plan.md`](docs/implementation-plan.md) for the phased roadmap.
 
-> Status: **Phase 4 — live metrics + management UI.** On top of Phases 0–3: a
-> live current-state panel (computed on-read from canonical), and a sources /
-> schedules / pipeline management UI — enable/disable integrations, edit cron,
-> trigger syncs, add sources, and run the pipeline, all from the browser. Two
-> sources (GitHub + Jira) feed Repo/PR Activity and DORA-ish Delivery dashboards
-> with unified cross-source Person attribution. Annotations + snapshots are Phase 5.
+> Status: **Phase 7 — Claude Code OTEL (push) ingestion.** Adds a push source: an
+> OTLP/HTTP JSON receiver at `POST /v1/metrics` ingests Claude Code telemetry
+> (cost, tokens, lines of code, sessions) through the same transform → aggregate →
+> render pipeline, rendered as a Claude Code usage dashboard. Person attribution
+> now spans **three sources** — a GitHub login, a Jira account, and a Claude Code
+> user can all map to one Person. (Phases 5 annotations/snapshots and 6 advanced
+> pipeline profiles were skipped for now.)
 
 ## Try the full loop (with sample data)
 

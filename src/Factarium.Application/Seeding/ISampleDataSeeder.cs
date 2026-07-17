@@ -12,6 +12,7 @@ public sealed record SampleSeedResult(
     int Commits,
     int Reviews,
     int Issues,
+    int UsageMetrics,
     int RecordsWritten);
 
 /// <summary>

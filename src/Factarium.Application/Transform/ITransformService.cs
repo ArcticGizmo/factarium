@@ -6,7 +6,8 @@ public sealed record TransformResult(
     int PullRequests,
     int Reviews,
     int IdentitiesEnsured,
-    int Issues = 0);
+    int Issues = 0,
+    int UsageMetrics = 0);
 
 /// <summary>
 /// Turns raw GitHub records (bronze) into canonical entities (silver) and ensures

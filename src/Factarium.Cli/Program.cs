@@ -72,7 +72,7 @@ static async Task<int> RunSeedAsync(string[] args)
 
     Console.WriteLine(
         $"Done. {result.Repositories} repos, {result.PullRequests} PRs, {result.Commits} commits, " +
-        $"{result.Reviews} reviews, {result.Issues} Jira issues " +
+        $"{result.Reviews} reviews, {result.Issues} Jira issues, {result.UsageMetrics} Claude Code metrics " +
         $"({result.RecordsWritten} raw records written/updated).");
     return 0;
 }

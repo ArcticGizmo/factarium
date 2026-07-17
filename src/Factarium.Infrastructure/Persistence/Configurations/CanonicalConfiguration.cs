@@ -56,6 +56,24 @@ internal sealed class CanonicalPullRequestConfiguration : IEntityTypeConfigurati
     }
 }
 
+internal sealed class CanonicalUsageMetricConfiguration : IEntityTypeConfiguration<CanonicalUsageMetric>
+{
+    public void Configure(EntityTypeBuilder<CanonicalUsageMetric> builder)
+    {
+        builder.ToTable("canonical_usage_metrics");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Source).HasMaxLength(64).IsRequired();
+        builder.Property(x => x.ExternalId).HasMaxLength(128).IsRequired();
+        builder.Property(x => x.MetricKey).HasMaxLength(64).IsRequired();
+        builder.Property(x => x.ActorLogin).HasMaxLength(256);
+        builder.Property(x => x.SessionId).HasMaxLength(128);
+        builder.Property(x => x.Model).HasMaxLength(128);
+        builder.HasIndex(x => new { x.Source, x.ExternalId }).IsUnique();
+        builder.HasIndex(x => new { x.MetricKey, x.OccurredAt });
+        builder.HasIndex(x => x.ActorIdentityId);
+    }
+}
+
 internal sealed class CanonicalIssueConfiguration : IEntityTypeConfiguration<CanonicalIssue>
 {
     public void Configure(EntityTypeBuilder<CanonicalIssue> builder)

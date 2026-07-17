@@ -26,7 +26,10 @@ internal sealed class SampleDataSeeder(
     private const string JiraIntegrationName = "Jira (sample data)";
     private const string Owner = "factarium-sample";
     private const string JiraBaseUrl = "https://factarium-sample.atlassian.net";
+    private const string SourceClaude = "claude-code";
+    private const string ClaudeIntegrationName = "Claude Code (OTEL)";
 
+    private static readonly string[] Models = ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"];
     private static readonly string[] ProjectKeys = ["QAI", "OPS", "WEB"];
     private static readonly string[] IssueTypes = ["Story", "Bug", "Task"];
     private static readonly string[] IssueStatuses = ["To Do", "In Progress", "In Review", "Done"];
@@ -207,7 +210,58 @@ internal sealed class SampleDataSeeder(
 
         written += await sink.WriteAsync(jira.Id, issueFacts, cancellationToken);
 
-        return new SampleSeedResult(repoCount, prCount, commitCount, reviewCount, issueCount, written);
+        // --- Claude Code OTEL usage metrics (raw as the push receiver would store them) ---
+        var claude = await EnsureIntegrationAsync(
+            ClaudeIntegrationName, SourceClaude,
+            new Dictionary<string, string?> { ["mode"] = "push" }, cancellationToken);
+
+        var usageFacts = new List<RawFact>();
+        for (var p = 0; p < peopleCount; p++)
+        {
+            var person = People[p];
+            var activeDays = rng.Next(options.Days / 3, options.Days);
+            for (var d = 0; d < activeDays; d++)
+            {
+                var when = now.AddDays(-rng.Next(0, options.Days)).AddHours(-rng.Next(0, 12));
+                var model = Models[rng.Next(Models.Length)];
+                var session = $"sess-{person.Login}-{d}";
+
+                void Metric(string name, string? unit, double value, string? type = null)
+                {
+                    var attrs = new Dictionary<string, string>
+                    {
+                        ["user.email"] = person.Email,
+                        ["user.id"] = person.Login,
+                        ["session.id"] = session,
+                        ["model"] = model,
+                    };
+                    if (type is not null)
+                    {
+                        attrs["type"] = type;
+                    }
+
+                    usageFacts.Add(Fact(SourceClaude, "metric", $"{person.Login}-{d}-{name}-{type}", new
+                    {
+                        name,
+                        unit,
+                        value,
+                        timeUnixNano = when.ToUnixTimeMilliseconds() * 1_000_000L,
+                        attributes = attrs,
+                    }, when));
+                }
+
+                Metric("claude_code.cost.usage", "USD", Math.Round(rng.NextDouble() * 4 + 0.2, 2));
+                Metric("claude_code.token.usage", "tokens", rng.Next(800, 24000), "input");
+                Metric("claude_code.token.usage", "tokens", rng.Next(400, 12000), "output");
+                Metric("claude_code.lines_of_code.count", "count", rng.Next(20, 600), "added");
+                Metric("claude_code.lines_of_code.count", "count", rng.Next(5, 250), "removed");
+                Metric("claude_code.session.count", "count", rng.Next(1, 4));
+            }
+        }
+
+        written += await sink.WriteAsync(claude.Id, usageFacts, cancellationToken);
+
+        return new SampleSeedResult(repoCount, prCount, commitCount, reviewCount, issueCount, usageFacts.Count, written);
     }
 
     private async Task<Integration> EnsureIntegrationAsync(

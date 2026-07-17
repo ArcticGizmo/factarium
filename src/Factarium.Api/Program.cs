@@ -106,6 +106,7 @@ try
     app.MapDashboardEndpoints();
     app.MapPipelineEndpoints();
     app.MapLiveEndpoints();
+    app.MapOtlpEndpoints();
 
     // SPA fallback: any non-API route serves index.html for client-side routing.
     app.MapFallbackToFile("index.html");

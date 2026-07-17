@@ -30,7 +30,7 @@ internal sealed class DailyMetricsAggregateService(
         var counts = new Dictionary<(string Metric, DateOnly Day, string ActorKey), (double Value, string? Label)>();
         var averages = new Dictionary<string, Dictionary<DateOnly, (double Sum, int Count)>>();
 
-        void AddCount(string metric, DateTimeOffset? when, Guid? identityId)
+        void AddValue(string metric, DateTimeOffset? when, Guid? identityId, double amount)
         {
             if (when is null)
             {
@@ -39,9 +39,11 @@ internal sealed class DailyMetricsAggregateService(
 
             var day = DateOnly.FromDateTime(when.Value.UtcDateTime);
             var (actorKey, label) = actors.Resolve(identityId);
-            Bump(counts, (metric, day, AllActors), 1, null);
-            Bump(counts, (metric, day, actorKey), 1, label);
+            Bump(counts, (metric, day, AllActors), amount, null);
+            Bump(counts, (metric, day, actorKey), amount, label);
         }
+
+        void AddCount(string metric, DateTimeOffset? when, Guid? identityId) => AddValue(metric, when, identityId, 1);
 
         void AddAverage(string metric, DateTimeOffset? day, double value)
         {
@@ -93,6 +95,12 @@ internal sealed class DailyMetricsAggregateService(
                     AddAverage("issue_cycle_time_hours", issue.ResolvedAt, (issue.ResolvedAt.Value - issue.CreatedAt.Value).TotalHours);
                 }
             }
+        }
+
+        // Claude Code OTEL usage: sum each metric value per day/actor.
+        foreach (var usage in await db.CanonicalUsageMetrics.AsNoTracking().ToListAsync(cancellationToken))
+        {
+            AddValue(usage.MetricKey, usage.OccurredAt, usage.ActorIdentityId, usage.Value);
         }
 
         var metrics = counts.Select(kvp => new DailyMetric

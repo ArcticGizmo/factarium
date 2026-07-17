@@ -46,9 +46,11 @@ public static class DependencyInjection
         services.AddScoped<ICredentialProtector, DataProtectionCredentialProtector>();
         services.AddScoped<IRawRecordSink, EfRawRecordSink>();
         services.AddScoped<IIntegrationSyncService, IntegrationSyncService>();
+        services.AddScoped<IPushIngestionService, PushIngestionService>();
         services.AddScoped<ISampleDataSeeder, SampleDataSeeder>();
         services.AddScoped<GitHubTransformService>();
         services.AddScoped<JiraTransformService>();
+        services.AddScoped<ClaudeOtelTransformService>();
         services.AddScoped<ITransformService, CompositeTransformService>();
         services.AddScoped<IAggregateService, DailyMetricsAggregateService>();
         services.AddScoped<IPipelineRunner, PipelineRunner>();

@@ -97,6 +97,46 @@ public static class DashboardEndpoints
             });
         });
 
+        group.MapGet("claude-code", async (FactariumDbContext db, CancellationToken ct) =>
+        {
+            async Task<List<object>> SeriesAsync(string metricKey)
+            {
+                var points = await db.DailyMetrics
+                    .Where(m => m.MetricKey == metricKey && m.ActorKey == "")
+                    .OrderBy(m => m.Day)
+                    .Select(m => new { m.Day, m.Value })
+                    .ToListAsync(ct);
+                return points.Select(p => (object)new { day = p.Day.ToString("yyyy-MM-dd"), value = p.Value }).ToList();
+            }
+
+            double Sum(string key) => db.DailyMetrics.Where(m => m.MetricKey == key && m.ActorKey == "").Sum(m => m.Value);
+
+            var costByActor = await db.DailyMetrics
+                .Where(m => m.MetricKey == "cc_cost_usd" && m.ActorKey != "")
+                .GroupBy(m => new { m.ActorKey, m.ActorLabel })
+                .Select(g => new { g.Key.ActorLabel, Value = g.Sum(x => x.Value) })
+                .OrderByDescending(x => x.Value)
+                .Take(12)
+                .ToListAsync(ct);
+
+            return Results.Ok(new
+            {
+                totals = new
+                {
+                    costUsd = Math.Round(Sum("cc_cost_usd"), 2),
+                    tokens = Sum("cc_tokens"),
+                    linesAdded = Sum("cc_lines_added"),
+                    linesRemoved = Sum("cc_lines_removed"),
+                    sessions = Sum("cc_sessions"),
+                },
+                costByDay = await SeriesAsync("cc_cost_usd"),
+                tokensByDay = await SeriesAsync("cc_tokens"),
+                linesAddedByDay = await SeriesAsync("cc_lines_added"),
+                sessionsByDay = await SeriesAsync("cc_sessions"),
+                costByActor = costByActor.Select(a => new { label = a.ActorLabel, value = Math.Round(a.Value, 2) }),
+            });
+        });
+
         return app;
     }
 }

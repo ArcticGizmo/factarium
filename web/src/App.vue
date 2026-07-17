@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import LiveSummaryPanel from './components/LiveSummaryPanel.vue'
 import RepoActivityDashboard from './components/RepoActivityDashboard.vue'
 import DeliveryDashboard from './components/DeliveryDashboard.vue'
+import ClaudeCodeDashboard from './components/ClaudeCodeDashboard.vue'
 import IdentityMappingPanel from './components/IdentityMappingPanel.vue'
 import SchedulesPanel from './components/SchedulesPanel.vue'
 
@@ -11,6 +12,7 @@ const me = ref(null)
 const error = ref(null)
 const dashboard = ref(null)
 const delivery = ref(null)
+const claudeCode = ref(null)
 
 async function load() {
   try {
@@ -29,6 +31,7 @@ async function load() {
 function refreshDashboards() {
   dashboard.value?.load()
   delivery.value?.load()
+  claudeCode.value?.load()
 }
 
 onMounted(load)
@@ -66,6 +69,9 @@ onMounted(load)
           </v-col>
           <v-col cols="12">
             <DeliveryDashboard ref="delivery" />
+          </v-col>
+          <v-col cols="12">
+            <ClaudeCodeDashboard ref="claudeCode" />
           </v-col>
           <v-col cols="12">
             <IdentityMappingPanel @changed="refreshDashboards" />

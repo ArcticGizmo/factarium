@@ -1,4 +1,5 @@
 using Factarium.Application.Sync;
+using Factarium.Integrations.ClaudeCode;
 using Factarium.Integrations.GitHub;
 using Factarium.Integrations.Jira;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +17,9 @@ public static class DependencyInjection
         // Jira base URL is per-integration, so no fixed BaseAddress.
         services.AddHttpClient<JiraApiClient>();
         services.AddScoped<IPullSource, JiraPullSource>();
+
+        // Push source: Claude Code OTEL (no HTTP client; receives inbound payloads).
+        services.AddScoped<IPushSource, ClaudeOtelPushSource>();
 
         return services;
     }
