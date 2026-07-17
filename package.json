@@ -6,13 +6,18 @@
   "description": "A self-contained engineering-metrics system: collector, aggregator, shaper, and renderer in one artifact.",
   "scripts": {
     "demo": "tsx src/demo.ts",
+    "demo:collect": "tsx src/demo-collect.ts",
     "typecheck": "tsc --noEmit",
+    "lint": "biome check src",
+    "lint:fix": "biome check --write src",
+    "format": "biome format --write src",
     "test": "node --test"
   },
   "dependencies": {
     "@duckdb/node-api": "^1.5.4-r.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.4",
     "@types/node": "^26.1.1",
     "tsx": "^4.23.1",
     "typescript": "^7.0.2"

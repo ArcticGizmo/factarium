@@ -15,6 +15,7 @@ import { LocalOwnerProvider } from "./core/auth.js";
 import { AllowAll } from "./core/authz.js";
 import type { RequestContext } from "./core/principal.js";
 import type { RawRecord } from "./core/storage.js";
+import { buildCorePullRequests, prCycleTimeByAuthor, printCycleTime } from "./pipeline.js";
 import { getStore } from "./store.js";
 
 // --- 1. collect: pretend a GitHub connector fetched these -------------------
@@ -24,8 +25,11 @@ const FAKE_PRS: RawRecord[] = [
     entity: "pull_request",
     naturalKey: "101",
     payload: {
-      number: 101, user: { login: "jane" }, additions: 40,
-      created_at: "2026-07-01T09:00:00Z", merged_at: "2026-07-01T15:00:00Z",
+      number: 101,
+      user: { login: "jane" },
+      additions: 40,
+      created_at: "2026-07-01T09:00:00Z",
+      merged_at: "2026-07-01T15:00:00Z",
     },
     fetchedAt: new Date("2026-07-03T08:00:00Z"),
   },
@@ -34,8 +38,11 @@ const FAKE_PRS: RawRecord[] = [
     entity: "pull_request",
     naturalKey: "102",
     payload: {
-      number: 102, user: { login: "sam" }, additions: 120,
-      created_at: "2026-07-02T10:00:00Z", merged_at: "2026-07-04T10:00:00Z",
+      number: 102,
+      user: { login: "sam" },
+      additions: 120,
+      created_at: "2026-07-02T10:00:00Z",
+      merged_at: "2026-07-04T10:00:00Z",
     },
     fetchedAt: new Date("2026-07-03T08:00:00Z"),
   },
@@ -44,18 +51,15 @@ const FAKE_PRS: RawRecord[] = [
     entity: "pull_request",
     naturalKey: "103",
     payload: {
-      number: 103, user: { login: "jane" }, additions: 12,
-      created_at: "2026-07-03T08:00:00Z", merged_at: null, // still open
+      number: 103,
+      user: { login: "jane" },
+      additions: 12,
+      created_at: "2026-07-03T08:00:00Z",
+      merged_at: null, // still open
     },
     fetchedAt: new Date("2026-07-03T08:00:00Z"),
   },
 ];
-
-interface CycleTimeRow {
-  author: string;
-  merged_prs: number;
-  avg_cycle_hours: number;
-}
 
 async function main(): Promise<void> {
   // Who is asking. Locally this is always the owner; remotely the AuthProvider
@@ -71,48 +75,20 @@ async function main(): Promise<void> {
     // --- collect -------------------------------------------------------
     const n = await store.land(FAKE_PRS);
     await store.setCursor({
-      source: "github", connection: "default", entity: "pull_request",
+      source: "github",
+      connection: "default",
+      entity: "pull_request",
       cursor: "2026-07-03T08:00:00Z",
     });
     const cursor = await store.getCursor("github", "default", "pull_request");
     console.log(`landed ${n} raw records; cursor now = ${cursor}`);
 
-    // --- aggregate: raw -> source-agnostic core -----------------------
-    // Dialect divergence lives ONLY in jsonField(); the rest is portable SQL.
-    const jf = (path: string) => store.jsonField("payload", path);
-    await store.execute(`
-      CREATE OR REPLACE TABLE core_pull_request AS
-      SELECT
-          natural_key                              AS pr_id,
-          ${jf("user.login")}                      AS author,
-          CAST(${jf("additions")} AS INTEGER)      AS additions,
-          CAST(${jf("created_at")} AS TIMESTAMP)   AS created_at,
-          TRY_CAST(${jf("merged_at")} AS TIMESTAMP) AS merged_at
-      FROM raw_records
-      WHERE source = 'github' AND entity = 'pull_request'
-    `);
-
-    // --- shape: a metric, read behind the authorization checkpoint ----
-    authz.authorize(ctx, "read", { kind: "metric", name: "pr_cycle_time" });
-    const rows = await store.query<CycleTimeRow>(`
-      SELECT
-          author,
-          COUNT(*)                                              AS merged_prs,
-          ROUND(AVG(date_diff('hour', created_at, merged_at)), 1) AS avg_cycle_hours
-      FROM core_pull_request
-      WHERE merged_at IS NOT NULL
-      GROUP BY author
-      ORDER BY avg_cycle_hours
-    `);
-
-    // --- render (stand-in) --------------------------------------------
-    console.log(`\nmetric: PR cycle time by author  (requested by ${ctx.principal.displayName})`);
-    console.log(`${"author".padEnd(8)} ${"merged_prs".padStart(10)} ${"avg_cycle_hours".padStart(16)}`);
-    for (const r of rows) {
-      console.log(
-        `${r.author.padEnd(8)} ${String(r.merged_prs).padStart(10)} ${String(r.avg_cycle_hours).padStart(16)}`,
-      );
-    }
+    // --- aggregate + shape + render: shared with demo-collect.ts -------
+    // demo-collect.ts runs these SAME functions over data that arrived through
+    // the source seam — identical output there is the point of the seam.
+    await buildCorePullRequests(store);
+    const rows = await prCycleTimeByAuthor(store, ctx, authz);
+    printCycleTime(rows, ctx.principal.displayName);
   } finally {
     await store.close();
   }

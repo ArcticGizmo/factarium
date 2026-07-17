@@ -1,0 +1,12 @@
+# Normalise line endings: LF in the repo and in working trees on every OS.
+# This is what settles the "LF will be replaced by CRLF" warnings on Windows.
+* text=auto eol=lf
+
+# Treat these as binary (never touch their bytes / never diff as text).
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.duckdb binary
+*.duckdb.wal binary

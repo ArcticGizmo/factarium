@@ -42,8 +42,8 @@ The skeleton everything hangs off.
   - [x] Core seams: storage, principal, auth, authz
   - [x] Runnable end-to-end `demo.ts` through the seams (verified)
 - **P2 — Hygiene**
-  - [ ] `.gitattributes` to settle LF/CRLF normalisation
-  - [ ] Linter + formatter (eslint/biome), wired into `npm run` and CI
+  - [x] `.gitattributes` to settle LF/CRLF normalisation
+  - [x] Linter + formatter (Biome) wired into `npm run` (lint/lint:fix/format); CI wiring tracked in WS9 P2
   - [ ] `CONTRIBUTING`/dev-setup notes; decide Bun-vs-Node dev story is documented
   - [ ] Keep the Python `storage-seam/` clearly labelled "reference only"
 
@@ -63,10 +63,11 @@ The swappable engine behind the seam.
 
 ### WS2 — Collect: sources & connectors
 Fetch raw facts; stay dumb. **The make-or-break seam** (README rule).
-- **P1 — Source seam**
-  - [ ] Uniform `Source` interface (fetch → `RawRecord[]`, blind to what's downstream)
-  - [ ] **Two** day-one implementations: a live API puller *and* a read-pre-aggregated-rows source (proves the federation escape hatch)
-  - [ ] Credential seam (`CredentialProvider`): local file/env default; secrets-manager later *(remote-readiness item 4)*
+- **P1 — Source seam** ✅
+  - [x] Uniform `Source` interface (fetch → `RawRecord[]` + watermark, blind to what's downstream)
+  - [x] **Two** day-one implementations: `HttpApiSource` (live puller) *and* `PreAggregatedSource` (read rows from file/URL) — proves the federation escape hatch
+  - [x] Credential seam (`CredentialProvider`) + `EnvCredentialProvider` default *(remote-readiness item 4)*
+  - [x] Source-agnostic `collect()` orchestrator; substitutability + idempotent re-sync verified in `demo:collect`
 - **P2 — First real connector**
   - [ ] GitHub connector (pull requests) → `land()`
   - [ ] Incremental sync using `getCursor`/`setCursor`; idempotent re-sync verified

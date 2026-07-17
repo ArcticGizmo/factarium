@@ -5,12 +5,15 @@
  * interface. Swapping engines is a one-line config change.
  */
 
-import type { StorageEngine } from "./core/storage.js";
 import { DuckDBStore } from "./adapters/storage/duckdb-store.js";
+import type { StorageEngine } from "./core/storage.js";
 
 export type EngineName = "duckdb" | "postgres";
 
-export function getStore(engine: EngineName = "duckdb", opts: { path?: string } = {}): StorageEngine {
+export function getStore(
+  engine: EngineName = "duckdb",
+  opts: { path?: string } = {},
+): StorageEngine {
   switch (engine) {
     case "duckdb":
       return new DuckDBStore(opts.path);

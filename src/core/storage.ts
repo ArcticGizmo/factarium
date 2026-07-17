@@ -53,10 +53,7 @@ export interface StorageEngine {
   /** Run DDL / a transformation step. No result set expected. */
   execute(sql: string, params?: readonly unknown[]): Promise<void>;
   /** Run a read query and return rows as plain objects (metrics, dashboards). */
-  query<T = Record<string, unknown>>(
-    sql: string,
-    params?: readonly unknown[],
-  ): Promise<T[]>;
+  query<T = Record<string, unknown>>(sql: string, params?: readonly unknown[]): Promise<T[]>;
 
   // --- incremental sync bookkeeping -------------------------------------
   getCursor(source: string, connection: string, entity: string): Promise<string | null>;

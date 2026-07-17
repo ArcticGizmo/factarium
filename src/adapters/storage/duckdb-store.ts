@@ -6,7 +6,7 @@
  * `@duckdb/node-api`. Nothing outside this file imports that package.
  */
 
-import { DuckDBInstance, type DuckDBConnection, type DuckDBValue } from "@duckdb/node-api";
+import { type DuckDBConnection, DuckDBInstance, type DuckDBValue } from "@duckdb/node-api";
 
 import type { RawRecord, StorageEngine, SyncCursor } from "../../core/storage.js";
 
@@ -87,10 +87,7 @@ export class DuckDBStore implements StorageEngine {
     await this.con.run(sql, params ? ([...params] as DuckDBValue[]) : undefined);
   }
 
-  async query<T = Record<string, unknown>>(
-    sql: string,
-    params?: readonly unknown[],
-  ): Promise<T[]> {
+  async query<T = Record<string, unknown>>(sql: string, params?: readonly unknown[]): Promise<T[]> {
     const reader = await this.con.runAndReadAll(
       sql,
       params ? ([...params] as DuckDBValue[]) : undefined,
@@ -108,7 +105,8 @@ export class DuckDBStore implements StorageEngine {
       "SELECT cursor FROM sync_state WHERE source = ? AND connection = ? AND entity = ?",
       [source, connection, entity],
     );
-    return rows.length ? rows[0]!.cursor : null;
+    const row = rows[0];
+    return row ? row.cursor : null;
   }
 
   async setCursor(c: SyncCursor): Promise<void> {
