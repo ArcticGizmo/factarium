@@ -13,7 +13,7 @@ services:
       POSTGRES_PASSWORD: factarium
       POSTGRES_DB: factarium
     ports:
-      - "5442:5432"
+      - "6880:5432"
     volumes:
       - factarium-pgdata:/var/lib/postgresql/data
     healthcheck:

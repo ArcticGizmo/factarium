@@ -14,7 +14,7 @@ public sealed class FactariumDbContextFactory : IDesignTimeDbContextFactory<Fact
     {
         var connectionString =
             Environment.GetEnvironmentVariable("FACTARIUM_DB")
-            ?? "Host=localhost;Port=5442;Database=factarium;Username=factarium;Password=factarium";
+            ?? "Host=localhost;Port=6880;Database=factarium;Username=factarium;Password=factarium";
 
         var options = new DbContextOptionsBuilder<FactariumDbContext>()
             .UseNpgsql(connectionString)

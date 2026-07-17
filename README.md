@@ -23,7 +23,7 @@ on a single Postgres. See [`docs/objective.md`](docs/objective.md) for the visio
 ## Run it (dev-mode)
 
 ```bash
-# 1. Start Postgres (host port 5442)
+# 1. Start Postgres (host port 6880)
 docker compose -f deploy/docker-compose.yml up -d postgres
 
 # 2. Apply migrations + seed the local user
