@@ -82,9 +82,12 @@ Raw → a conformed, source-independent model.
 - **P1 — Core model** 🟡
   - [x] Re-runnable `raw_records` → `core_*` transform (`buildCorePullRequests` in `pipeline.ts`)
   - [ ] Identity/enrichment/tagging over data already held (never re-fetch)
-- **P2 — Transform runner**
-  - [ ] A small runner that orders/executes transforms deterministically & idempotently
+- **P2 — Build/materialisation runner** ([ADR 0003](./decisions/0003-build-materialization-runner.md))
+  - [ ] Minimal build-step DAG: named steps (transforms + metric materialisations) declaring deps, run in topological order
+  - [ ] **Build-then-swap** per materialised object (staging name → atomic replace) so long builds never block reads
+  - [ ] Separable worker off the serving path; triggers: post-sync hook + manual "refresh"; single-writer build lock/queue
   - [ ] Portable SQL via `jsonField()`; engine specifics stay in the adapter
+  - [ ] *Deferred (until a metric is actually slow):* incremental recompute, real scheduler/queue → adopt dbt/SQLMesh rather than grow a bespoke DAG engine
 
 ### WS4 — Shape: metrics as tested code
 The trust layer. No substrate saves you here.
