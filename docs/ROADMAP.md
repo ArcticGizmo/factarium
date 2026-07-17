@@ -19,7 +19,7 @@ This is the primary "are we making progress" view.
 
 - [ ] **M0 — Foundations** 🟡 · local single-user skeleton, seams in place, one loop runs.
   Pulls: WS0 all · WS1 P1 · WS6 P1. *(nearly complete — see WS0/WS1/WS6)*
-- [ ] **M1 — Real data, end to end** · one live connector → transform → one *tested* metric, run from the CLI.
+- [x] **M1 — Real data, end to end** ✅ · live GitHub connector → transform → tested pr_cycle_time metric, run from the CLI (`npm run demo:github`).
   Pulls: WS2 P1–P2 · WS3 P1 · WS4 P1 · WS9 P1.
 - [ ] **M2 — Dashboards you can look at** · serving layer + embedded renderer showing real metrics in a browser.
   Pulls: WS5 P1–P3 · WS3 P2 · WS4 P2.
@@ -68,9 +68,9 @@ Fetch raw facts; stay dumb. **The make-or-break seam** (README rule).
   - [x] **Two** day-one implementations: `HttpApiSource` (live puller) *and* `PreAggregatedSource` (read rows from file/URL) — proves the federation escape hatch
   - [x] Credential seam (`CredentialProvider`) + `EnvCredentialProvider` default *(remote-readiness item 4)*
   - [x] Source-agnostic `collect()` orchestrator; substitutability + idempotent re-sync verified in `demo:collect`
-- **P2 — First real connector**
-  - [ ] GitHub connector (pull requests) → `land()`
-  - [ ] Incremental sync using `getCursor`/`setCursor`; idempotent re-sync verified
+- **P2 — First real connector** ✅
+  - [x] GitHub connector (`GitHubPullRequestsSource`, pull requests) → `land()`; verified live against `ArcticGizmo/perch`
+  - [x] Incremental sync via `updated_at` watermark (`getCursor`/`setCursor`); re-sync fetches 0 unchanged; pagination + maxPages cap; network-free unit tests (injected fetch)
 - **P3 — Collector as separable worker** *(sharp edge #2)*
   - [ ] Run collection off the request path (in-process worker/queue) so "pop it out later" is a deployment change
   - [ ] Scheduling (manual "sync now" + interval)
@@ -79,8 +79,8 @@ Fetch raw facts; stay dumb. **The make-or-break seam** (README rule).
 
 ### WS3 — Aggregate: transformations
 Raw → a conformed, source-independent model.
-- **P1 — Core model**
-  - [ ] Re-runnable `raw_records` → `core_*` transforms (build on the demo's pattern)
+- **P1 — Core model** 🟡
+  - [x] Re-runnable `raw_records` → `core_*` transform (`buildCorePullRequests` in `pipeline.ts`)
   - [ ] Identity/enrichment/tagging over data already held (never re-fetch)
 - **P2 — Transform runner**
   - [ ] A small runner that orders/executes transforms deterministically & idempotently
