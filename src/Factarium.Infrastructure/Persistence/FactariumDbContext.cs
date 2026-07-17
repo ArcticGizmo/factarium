@@ -37,6 +37,8 @@ public class FactariumDbContext(DbContextOptions<FactariumDbContext> options)
 
     public DbSet<CanonicalReview> CanonicalReviews => Set<CanonicalReview>();
 
+    public DbSet<CanonicalIssue> CanonicalIssues => Set<CanonicalIssue>();
+
     public DbSet<DailyMetric> DailyMetrics => Set<DailyMetric>();
 
     public DbSet<PipelineStep> PipelineSteps => Set<PipelineStep>();

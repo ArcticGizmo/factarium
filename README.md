@@ -4,11 +4,12 @@ Quick, transparent, dev-centric metrics: **sync → transform → aggregate → 
 on a single Postgres. See [`docs/objective.md`](docs/objective.md) for the vision and
 [`docs/implementation-plan.md`](docs/implementation-plan.md) for the phased roadmap.
 
-> Status: **Phase 2 — first dashboard.** The full `sync → transform → aggregate →
-> render` loop works on GitHub data: raw records become canonical entities, roll up
-> into daily metrics, and render as a Repo/PR Activity dashboard (vue-echarts). Each
-> actor becomes a mappable identity; linking identities to a Person re-attributes
-> their activity. Jira + DORA metrics come in Phase 3.
+> Status: **Phase 3 — two sources + delivery metrics.** GitHub *and* Jira sync
+> through the same pipeline; a Repo/PR Activity dashboard and a DORA-ish Delivery
+> dashboard (deploy frequency via a merge-to-`main` proxy, change lead time,
+> throughput, issue cycle time) render from merged data. Identities from both
+> sources map to one Person for unified cross-source attribution. Live metrics +
+> schedule-management UI come in Phase 4.
 
 ## Try the full loop (with sample data)
 

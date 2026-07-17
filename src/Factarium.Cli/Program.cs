@@ -68,11 +68,11 @@ static async Task<int> RunSeedAsync(string[] args)
         $"Seeding sample GitHub data (seed={options.Seed}, repos={options.Repositories}, " +
         $"people={options.People}, days={options.Days})...");
 
-    var result = await seeder.SeedGitHubAsync(options, CancellationToken.None);
+    var result = await seeder.SeedAsync(options, CancellationToken.None);
 
     Console.WriteLine(
-        $"Done. Integration {result.IntegrationId}: {result.Repositories} repos, " +
-        $"{result.PullRequests} PRs, {result.Commits} commits, {result.Reviews} reviews " +
+        $"Done. {result.Repositories} repos, {result.PullRequests} PRs, {result.Commits} commits, " +
+        $"{result.Reviews} reviews, {result.Issues} Jira issues " +
         $"({result.RecordsWritten} raw records written/updated).");
     return 0;
 }

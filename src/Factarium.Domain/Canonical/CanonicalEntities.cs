@@ -40,11 +40,33 @@ public class CanonicalPullRequest
     public string? Title { get; set; }
     public required string State { get; set; }
     public bool IsMerged { get; set; }
+
+    /// <summary>Target branch of the PR (e.g. "main"); used for the DORA deploy proxy.</summary>
+    public string? BaseRef { get; set; }
+
     public Guid? AuthorIdentityId { get; set; }
     public string? AuthorLogin { get; set; }
     public DateTimeOffset? CreatedAt { get; set; }
     public DateTimeOffset? MergedAt { get; set; }
     public DateTimeOffset? ClosedAt { get; set; }
+}
+
+/// <summary>A tracker issue (Jira). Actor attribution is the assignee's identity.</summary>
+public class CanonicalIssue
+{
+    public long Id { get; set; }
+    public required string Source { get; set; }
+    public required string ExternalId { get; set; }
+    public required string Key { get; set; }
+    public string? ProjectKey { get; set; }
+    public string? IssueType { get; set; }
+    public string? Status { get; set; }
+    public bool IsResolved { get; set; }
+    public Guid? AssigneeIdentityId { get; set; }
+    public string? AssigneeLogin { get; set; }
+    public DateTimeOffset? CreatedAt { get; set; }
+    public DateTimeOffset? ResolvedAt { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
 }
 
 public class CanonicalReview

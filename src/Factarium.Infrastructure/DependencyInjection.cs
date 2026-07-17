@@ -1,4 +1,5 @@
 using Factarium.Application.Aggregate;
+using Factarium.Application.Configuration;
 using Factarium.Application.Pipeline;
 using Factarium.Application.Seeding;
 using Factarium.Application.Security;
@@ -34,6 +35,8 @@ public static class DependencyInjection
 
         services.TryAddSingleton(TimeProvider.System);
 
+        services.Configure<DoraOptions>(configuration.GetSection(DoraOptions.SectionName));
+
         // Encrypt integration credentials at rest; key ring persists in Postgres
         // so tokens stay decryptable across restarts and shared-DB machines.
         services.AddDataProtection()
@@ -44,7 +47,9 @@ public static class DependencyInjection
         services.AddScoped<IRawRecordSink, EfRawRecordSink>();
         services.AddScoped<IIntegrationSyncService, IntegrationSyncService>();
         services.AddScoped<ISampleDataSeeder, SampleDataSeeder>();
-        services.AddScoped<ITransformService, GitHubTransformService>();
+        services.AddScoped<GitHubTransformService>();
+        services.AddScoped<JiraTransformService>();
+        services.AddScoped<ITransformService, CompositeTransformService>();
         services.AddScoped<IAggregateService, DailyMetricsAggregateService>();
         services.AddScoped<IPipelineRunner, PipelineRunner>();
 

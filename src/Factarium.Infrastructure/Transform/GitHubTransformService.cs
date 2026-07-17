@@ -195,6 +195,7 @@ internal sealed class GitHubTransformService(FactariumDbContext db, TimeProvider
             pr.State = Str(payload, "state") ?? "unknown";
             pr.MergedAt = Timestamp(payload, "merged_at");
             pr.IsMerged = pr.MergedAt is not null;
+            pr.BaseRef = payload.TryGetProperty("base", out var baseObj) ? Str(baseObj, "ref") : null;
             pr.CreatedAt = Timestamp(payload, "created_at");
             pr.ClosedAt = Timestamp(payload, "closed_at");
             pr.AuthorLogin = login;

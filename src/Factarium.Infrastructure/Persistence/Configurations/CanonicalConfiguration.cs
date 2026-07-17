@@ -47,11 +47,31 @@ internal sealed class CanonicalPullRequestConfiguration : IEntityTypeConfigurati
         builder.Property(x => x.RepositoryFullName).HasMaxLength(512).IsRequired();
         builder.Property(x => x.Title).HasMaxLength(1024);
         builder.Property(x => x.State).HasMaxLength(32).IsRequired();
+        builder.Property(x => x.BaseRef).HasMaxLength(256);
         builder.Property(x => x.AuthorLogin).HasMaxLength(256);
         builder.HasIndex(x => new { x.Source, x.ExternalId }).IsUnique();
         builder.HasIndex(x => x.CreatedAt);
         builder.HasIndex(x => x.MergedAt);
         builder.HasIndex(x => new { x.RepositoryFullName, x.Number });
+    }
+}
+
+internal sealed class CanonicalIssueConfiguration : IEntityTypeConfiguration<CanonicalIssue>
+{
+    public void Configure(EntityTypeBuilder<CanonicalIssue> builder)
+    {
+        builder.ToTable("canonical_issues");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Source).HasMaxLength(64).IsRequired();
+        builder.Property(x => x.ExternalId).HasMaxLength(128).IsRequired();
+        builder.Property(x => x.Key).HasMaxLength(64).IsRequired();
+        builder.Property(x => x.ProjectKey).HasMaxLength(64);
+        builder.Property(x => x.IssueType).HasMaxLength(64);
+        builder.Property(x => x.Status).HasMaxLength(64);
+        builder.Property(x => x.AssigneeLogin).HasMaxLength(256);
+        builder.HasIndex(x => new { x.Source, x.ExternalId }).IsUnique();
+        builder.HasIndex(x => x.ResolvedAt);
+        builder.HasIndex(x => x.AssigneeIdentityId);
     }
 }
 

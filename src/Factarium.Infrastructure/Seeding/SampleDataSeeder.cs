@@ -20,9 +20,16 @@ internal sealed class SampleDataSeeder(
     IRawRecordSink sink,
     TimeProvider clock) : ISampleDataSeeder
 {
-    private const string Source = "github";
-    private const string SampleIntegrationName = "GitHub (sample data)";
+    private const string SourceGitHub = "github";
+    private const string SourceJira = "jira";
+    private const string GitHubIntegrationName = "GitHub (sample data)";
+    private const string JiraIntegrationName = "Jira (sample data)";
     private const string Owner = "factarium-sample";
+    private const string JiraBaseUrl = "https://factarium-sample.atlassian.net";
+
+    private static readonly string[] ProjectKeys = ["QAI", "OPS", "WEB"];
+    private static readonly string[] IssueTypes = ["Story", "Bug", "Task"];
+    private static readonly string[] IssueStatuses = ["To Do", "In Progress", "In Review", "Done"];
 
     private static readonly (string Login, string Name, string Email)[] People =
     [
@@ -49,9 +56,11 @@ internal sealed class SampleDataSeeder(
 
     private static readonly string[] ReviewStates = ["APPROVED", "CHANGES_REQUESTED", "COMMENTED"];
 
-    public async Task<SampleSeedResult> SeedGitHubAsync(SampleSeedOptions options, CancellationToken cancellationToken)
+    public async Task<SampleSeedResult> SeedAsync(SampleSeedOptions options, CancellationToken cancellationToken)
     {
-        var integration = await EnsureIntegrationAsync(cancellationToken);
+        var github = await EnsureIntegrationAsync(
+            GitHubIntegrationName, SourceGitHub,
+            new Dictionary<string, string?> { ["org"] = Owner }, cancellationToken);
 
         var rng = new Random(options.Seed);
         var now = clock.GetUtcNow();
@@ -68,7 +77,7 @@ internal sealed class SampleDataSeeder(
             var repoCreated = now.AddDays(-options.Days - rng.Next(30, 400));
             repoCount++;
 
-            facts.Add(Fact("repository", repoId.ToString(), new
+            facts.Add(Fact(SourceGitHub, "repository", repoId.ToString(), new
             {
                 id = repoId,
                 node_id = $"R_{repoId}",
@@ -90,7 +99,7 @@ internal sealed class SampleDataSeeder(
                 var sha = Sha(rng);
                 commitCount++;
 
-                facts.Add(Fact("commit", $"{fullName}@{sha}", new
+                facts.Add(Fact(SourceGitHub, "commit", $"{fullName}@{sha}", new
                 {
                     sha,
                     commit = new
@@ -119,7 +128,7 @@ internal sealed class SampleDataSeeder(
                 var updated = merged ?? closed ?? created.AddHours(rng.Next(1, 48));
                 prCount++;
 
-                facts.Add(Fact("pull_request", prId.ToString(), new
+                facts.Add(Fact(SourceGitHub, "pull_request", prId.ToString(), new
                 {
                     id = prId,
                     number,
@@ -144,7 +153,7 @@ internal sealed class SampleDataSeeder(
                     var reviewId = prId * 10 + v;
                     reviewCount++;
 
-                    facts.Add(Fact("review", reviewId.ToString(), new
+                    facts.Add(Fact(SourceGitHub, "review", reviewId.ToString(), new
                     {
                         id = reviewId,
                         user = new { login = reviewer.Login, id = 1000 + Array.IndexOf(People, reviewer) },
@@ -157,16 +166,54 @@ internal sealed class SampleDataSeeder(
             }
         }
 
-        var written = await sink.WriteAsync(integration.Id, facts, cancellationToken);
+        var written = await sink.WriteAsync(github.Id, facts, cancellationToken);
 
-        return new SampleSeedResult(integration.Id, repoCount, prCount, commitCount, reviewCount, written);
+        // --- Jira issues (distinct identities for the same people) ---
+        var jira = await EnsureIntegrationAsync(
+            JiraIntegrationName, SourceJira,
+            new Dictionary<string, string?> { ["baseUrl"] = JiraBaseUrl, ["email"] = "dev@example.com" },
+            cancellationToken);
+
+        var issueFacts = new List<RawFact>();
+        var issueCount = rng.Next(40, 80);
+        for (var n = 1; n <= issueCount; n++)
+        {
+            var project = ProjectKeys[rng.Next(ProjectKeys.Length)];
+            var assignee = People[rng.Next(peopleCount)];
+            var created = now.AddDays(-rng.Next(0, options.Days)).AddHours(-rng.Next(0, 24));
+            var status = IssueStatuses[rng.Next(IssueStatuses.Length)];
+            var isDone = status == "Done";
+            DateTimeOffset? resolved = isDone ? created.AddHours(rng.Next(4, 400)) : null;
+            var updated = resolved ?? created.AddHours(rng.Next(1, 72));
+            var issueId = 200_000 + n;
+
+            issueFacts.Add(Fact(SourceJira, "issue", issueId.ToString(), new
+            {
+                id = issueId.ToString(),
+                key = $"{project}-{n}",
+                fields = new
+                {
+                    summary = PrTitles[rng.Next(PrTitles.Length)],
+                    status = new { name = status, statusCategory = new { key = isDone ? "done" : "indeterminate" } },
+                    assignee = new { accountId = $"acc-{assignee.Login}", displayName = assignee.Name },
+                    issuetype = new { name = IssueTypes[rng.Next(IssueTypes.Length)] },
+                    project = new { key = project },
+                    created = Jira(created),
+                    updated = Jira(updated),
+                    resolutiondate = resolved is null ? null : Jira(resolved.Value),
+                },
+            }, updated));
+        }
+
+        written += await sink.WriteAsync(jira.Id, issueFacts, cancellationToken);
+
+        return new SampleSeedResult(repoCount, prCount, commitCount, reviewCount, issueCount, written);
     }
 
-    private async Task<Integration> EnsureIntegrationAsync(CancellationToken cancellationToken)
+    private async Task<Integration> EnsureIntegrationAsync(
+        string name, string type, Dictionary<string, string?> settings, CancellationToken cancellationToken)
     {
-        var integration = await db.Integrations
-            .FirstOrDefaultAsync(i => i.Name == SampleIntegrationName, cancellationToken);
-
+        var integration = await db.Integrations.FirstOrDefaultAsync(i => i.Name == name, cancellationToken);
         if (integration is not null)
         {
             return integration;
@@ -175,11 +222,11 @@ internal sealed class SampleDataSeeder(
         integration = new Integration
         {
             Id = Guid.NewGuid(),
-            Type = Source,
-            Name = SampleIntegrationName,
+            Type = type,
+            Name = name,
             Enabled = false,
             ScheduleCron = null,
-            SettingsJson = JsonSerializer.Serialize(new Dictionary<string, string?> { ["org"] = Owner }),
+            SettingsJson = JsonSerializer.Serialize(settings),
             CreatedAt = clock.GetUtcNow(),
         };
 
@@ -188,11 +235,14 @@ internal sealed class SampleDataSeeder(
         return integration;
     }
 
-    private static RawFact Fact(string entityType, string sourceId, object payload, DateTimeOffset? updatedAt) =>
-        new(Source, entityType, sourceId, JsonSerializer.Serialize(payload), updatedAt);
+    private static RawFact Fact(string source, string entityType, string sourceId, object payload, DateTimeOffset? updatedAt) =>
+        new(source, entityType, sourceId, JsonSerializer.Serialize(payload), updatedAt);
 
     private static string Iso(DateTimeOffset value) =>
         value.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ");
+
+    private static string Jira(DateTimeOffset value) =>
+        value.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fff+0000");
 
     private static string Sha(Random rng)
     {

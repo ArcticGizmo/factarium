@@ -2,12 +2,14 @@
 import { ref, onMounted } from 'vue'
 import IntegrationsPanel from './components/IntegrationsPanel.vue'
 import RepoActivityDashboard from './components/RepoActivityDashboard.vue'
+import DeliveryDashboard from './components/DeliveryDashboard.vue'
 import IdentityMappingPanel from './components/IdentityMappingPanel.vue'
 
 const health = ref(null)
 const me = ref(null)
 const error = ref(null)
 const dashboard = ref(null)
+const delivery = ref(null)
 
 async function load() {
   try {
@@ -25,6 +27,7 @@ async function load() {
 // When identity mappings change, re-pull the dashboard (metrics were re-aggregated).
 function onMappingChanged() {
   dashboard.value?.load()
+  delivery.value?.load()
 }
 
 onMounted(load)
@@ -56,6 +59,9 @@ onMounted(load)
         <v-row>
           <v-col cols="12">
             <RepoActivityDashboard ref="dashboard" />
+          </v-col>
+          <v-col cols="12">
+            <DeliveryDashboard ref="delivery" />
           </v-col>
           <v-col cols="12">
             <IdentityMappingPanel @changed="onMappingChanged" />
