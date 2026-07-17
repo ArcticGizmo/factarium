@@ -28,7 +28,16 @@ try
     builder.Services.AddSingleton<ICurrentUserAccessor, LocalCurrentUserAccessor>();
 
     // Background scheduling: Quartz executes integration syncs; our DB holds the schedule.
-    builder.Services.AddQuartz();
+    builder.Services.AddQuartz(q =>
+    {
+        // Staleness-gated transform + aggregate on a fixed cadence.
+        var pipelineJob = new JobKey("pipeline");
+        q.AddJob<PipelineJob>(o => o.WithIdentity(pipelineJob).StoreDurably());
+        q.AddTrigger(t => t
+            .ForJob(pipelineJob)
+            .WithIdentity("pipeline-cron")
+            .WithCronSchedule("0 0/5 * * * ?"));
+    });
     builder.Services.AddQuartzHostedService(options => options.WaitForJobsToComplete = true);
     builder.Services.AddTransient<IntegrationSyncJob>();
     builder.Services.AddSingleton<IIntegrationScheduler, QuartzIntegrationScheduler>();

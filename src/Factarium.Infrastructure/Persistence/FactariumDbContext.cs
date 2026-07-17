@@ -1,4 +1,8 @@
+using Factarium.Domain.Canonical;
 using Factarium.Domain.Identity;
+using Factarium.Domain.Metrics;
+using Factarium.Domain.People;
+using Factarium.Domain.Pipeline;
 using Factarium.Domain.Sync;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +24,22 @@ public class FactariumDbContext(DbContextOptions<FactariumDbContext> options)
     public DbSet<Integration> Integrations => Set<Integration>();
 
     public DbSet<RawRecord> RawRecords => Set<RawRecord>();
+
+    public DbSet<Person> People => Set<Person>();
+
+    public DbSet<SourceIdentity> SourceIdentities => Set<SourceIdentity>();
+
+    public DbSet<CanonicalRepository> CanonicalRepositories => Set<CanonicalRepository>();
+
+    public DbSet<CanonicalCommit> CanonicalCommits => Set<CanonicalCommit>();
+
+    public DbSet<CanonicalPullRequest> CanonicalPullRequests => Set<CanonicalPullRequest>();
+
+    public DbSet<CanonicalReview> CanonicalReviews => Set<CanonicalReview>();
+
+    public DbSet<DailyMetric> DailyMetrics => Set<DailyMetric>();
+
+    public DbSet<PipelineStep> PipelineSteps => Set<PipelineStep>();
 
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 

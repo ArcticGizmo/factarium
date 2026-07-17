@@ -1,3 +1,4 @@
+using Factarium.Application.Pipeline;
 using Factarium.Application.Seeding;
 using Factarium.Cli;
 using Factarium.Infrastructure;
@@ -16,6 +17,9 @@ switch (command)
 
     case "seed":
         return await RunSeedAsync(args);
+
+    case "pipeline" when args.ElementAtOrDefault(1) == "run":
+        return await RunPipelineAsync(args);
 
     case "snapshot":
         return await SnapshotCommands.SnapshotAsync(args, GetDbConnection(args));
@@ -86,6 +90,32 @@ static IHost BuildHost(string[] args)
     return builder.Build();
 }
 
+static async Task<int> RunPipelineAsync(string[] args)
+{
+    using var host = BuildHost(args);
+    await host.Services.MigrateAndSeedAsync();
+
+    await using var scope = host.Services.CreateAsyncScope();
+    var runner = scope.ServiceProvider.GetRequiredService<IPipelineRunner>();
+
+    Console.WriteLine("Running transform + aggregate pipeline...");
+    var result = await runner.RunAsync(force: true, CancellationToken.None);
+
+    if (result.Transform is { } t)
+    {
+        Console.WriteLine(
+            $"Transform: {t.Repositories} repos, {t.Commits} commits, {t.PullRequests} PRs, " +
+            $"{t.Reviews} reviews, {t.IdentitiesEnsured} identities.");
+    }
+
+    if (result.Aggregate is { } a)
+    {
+        Console.WriteLine($"Aggregate: {a.MetricPoints} metric points.");
+    }
+
+    return 0;
+}
+
 static DbConnectionInfo GetDbConnection(string[] args)
 {
     var config = new ConfigurationBuilder()
@@ -117,6 +147,7 @@ static void PrintUsage()
         Usage:
           factarium db migrate                 Apply pending EF Core migrations and seed local defaults.
           factarium seed [options]             Populate the database with deterministic sample GitHub data.
+          factarium pipeline run               Run the transform + aggregate pipeline once.
           factarium snapshot [--name N]        Dump the database to snapshots/<name>.dump (via pg_dump).
           factarium restore --name N           Restore a snapshot (via pg_restore, --clean).
           factarium help                       Show this help.

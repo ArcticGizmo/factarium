@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Factarium.Application.Sync;
 using Microsoft.Extensions.Logging;
 
@@ -97,17 +98,20 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
                 break;
             }
 
-            facts.Add(new RawFact(Source, "pull_request", Id(pr), pr.GetRawText(), updatedAt));
+            var number = pr.GetProperty("number").GetInt32();
+            facts.Add(new RawFact(Source, "pull_request", Id(pr),
+                Enrich(pr, ("repository_full_name", fullName)), updatedAt));
             if (updatedAt is not null && (maxUpdated is null || updatedAt > maxUpdated))
             {
                 maxUpdated = updatedAt;
             }
 
-            var number = pr.GetProperty("number").GetInt32();
             await foreach (var review in client.GetPagedAsync(
                                $"repos/{fullName}/pulls/{number}/reviews?per_page=100", token, cancellationToken))
             {
-                facts.Add(new RawFact(Source, "review", Id(review), review.GetRawText(), GetTimestamp(review, "submitted_at")));
+                facts.Add(new RawFact(Source, "review", Id(review),
+                    Enrich(review, ("repository_full_name", fullName), ("pull_request_number", number)),
+                    GetTimestamp(review, "submitted_at")));
             }
         }
 
@@ -142,7 +146,8 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
                 ? GetTimestamp(a, "date")
                 : null;
 
-            facts.Add(new RawFact(Source, "commit", $"{fullName}@{sha}", commit.GetRawText(), committedAt));
+            facts.Add(new RawFact(Source, "commit", $"{fullName}@{sha}",
+                Enrich(commit, ("repository_full_name", fullName)), committedAt));
             if (committedAt is not null && (maxCommitted is null || committedAt > maxCommitted))
             {
                 maxCommitted = committedAt;
@@ -160,6 +165,18 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
 
     private static RawFact RepositoryFact(JsonElement repo) =>
         new(Source, "repository", Id(repo), repo.GetRawText(), GetTimestamp(repo, "updated_at"));
+
+    /// <summary>Adds Factarium provenance fields (repo/PR context) to a raw payload.</summary>
+    private static string Enrich(JsonElement element, params (string Key, JsonNode? Value)[] fields)
+    {
+        var node = JsonNode.Parse(element.GetRawText())!.AsObject();
+        foreach (var (key, value) in fields)
+        {
+            node[key] = value;
+        }
+
+        return node.ToJsonString();
+    }
 
     private static string Id(JsonElement element) =>
         element.GetProperty("id").GetInt64().ToString();

@@ -3,6 +3,7 @@ using System;
 using Factarium.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Factarium.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(FactariumDbContext))]
-    partial class FactariumDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260717141122_CanonicalAndMetrics")]
+    partial class CanonicalAndMetrics
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

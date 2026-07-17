@@ -1,8 +1,14 @@
+using Factarium.Application.Aggregate;
+using Factarium.Application.Pipeline;
 using Factarium.Application.Seeding;
 using Factarium.Application.Security;
 using Factarium.Application.Sync;
+using Factarium.Application.Transform;
 using Factarium.Domain.Identity;
+using Factarium.Infrastructure.Aggregate;
+using Factarium.Infrastructure.Pipeline;
 using Factarium.Infrastructure.Seeding;
+using Factarium.Infrastructure.Transform;
 using Factarium.Infrastructure.Persistence;
 using Factarium.Infrastructure.Security;
 using Factarium.Infrastructure.Sync;
@@ -38,6 +44,9 @@ public static class DependencyInjection
         services.AddScoped<IRawRecordSink, EfRawRecordSink>();
         services.AddScoped<IIntegrationSyncService, IntegrationSyncService>();
         services.AddScoped<ISampleDataSeeder, SampleDataSeeder>();
+        services.AddScoped<ITransformService, GitHubTransformService>();
+        services.AddScoped<IAggregateService, DailyMetricsAggregateService>();
+        services.AddScoped<IPipelineRunner, PipelineRunner>();
 
         return services;
     }
