@@ -88,9 +88,10 @@ Raw → a conformed, source-independent model.
 
 ### WS4 — Shape: metrics as tested code
 The trust layer. No substrate saves you here.
-- **P1 — Metric primitive**
-  - [ ] A metric = named, versioned SQL with explicit grain
-  - [ ] Fixture-based tests (`node --test`): metric SQL over known input → known output
+- **P1 — Metric primitive** ✅
+  - [x] A metric = named, versioned SQL with explicit grain (`core/metric.ts` + `runMetric()`, behind the authz checkpoint)
+  - [x] First metric defined: `metrics/pr-cycle-time.ts`
+  - [x] Fixture-based tests (`node --test` via tsx): known input → exact rows, incl. averaging, open-PR exclusion, empty case, and authz-deny
 - **P2 — Metric registry**
   - [ ] Register/discover metrics; expose them to the serving layer behind the authz checkpoint
   - [ ] A couple of real metrics (PR cycle time, throughput) with tests
@@ -143,9 +144,9 @@ At scale the system does *less* — point at pre-aggregated results as just anot
   - [ ] Materialise rollups; dashboards read cheap pre-aggregated tables
 
 ### WS9 — Quality, testing & DX (cross-cutting)
-- **P1 — Test foundation**
-  - [ ] `node --test` harness + fixtures pattern for metrics/transforms
-  - [ ] Storage adapter test suite (reusable across engines)
+- **P1 — Test foundation** 🟡
+  - [x] `node --test` harness (tsx loader) + fixtures pattern (`test/`, shared `helpers.ts`)
+  - [x] Storage adapter test suite written against the seam (`test/storage/`) — reusable when a 2nd engine lands
 - **P2 — CI**
   - [ ] CI runs typecheck + lint + tests on push
   - [ ] Release automation hook (feeds WS7 P3)

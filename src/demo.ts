@@ -13,9 +13,11 @@
 
 import { LocalOwnerProvider } from "./core/auth.js";
 import { AllowAll } from "./core/authz.js";
+import { runMetric } from "./core/metric.js";
 import type { RequestContext } from "./core/principal.js";
 import type { RawRecord } from "./core/storage.js";
-import { buildCorePullRequests, prCycleTimeByAuthor, printCycleTime } from "./pipeline.js";
+import { type CycleTimeRow, prCycleTime } from "./metrics/pr-cycle-time.js";
+import { buildCorePullRequests, printCycleTime } from "./pipeline.js";
 import { getStore } from "./store.js";
 
 // --- 1. collect: pretend a GitHub connector fetched these -------------------
@@ -87,7 +89,7 @@ async function main(): Promise<void> {
     // demo-collect.ts runs these SAME functions over data that arrived through
     // the source seam — identical output there is the point of the seam.
     await buildCorePullRequests(store);
-    const rows = await prCycleTimeByAuthor(store, ctx, authz);
+    const rows = await runMetric<CycleTimeRow>(store, ctx, authz, prCycleTime);
     printCycleTime(rows, ctx.principal.displayName);
   } finally {
     await store.close();

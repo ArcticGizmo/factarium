@@ -18,8 +18,10 @@ import { PreAggregatedSource } from "./adapters/source/pre-aggregated-source.js"
 import { collect } from "./collect.js";
 import { LocalOwnerProvider } from "./core/auth.js";
 import { AllowAll } from "./core/authz.js";
+import { runMetric } from "./core/metric.js";
 import type { RequestContext } from "./core/principal.js";
-import { buildCorePullRequests, prCycleTimeByAuthor, printCycleTime } from "./pipeline.js";
+import { type CycleTimeRow, prCycleTime } from "./metrics/pr-cycle-time.js";
+import { buildCorePullRequests, printCycleTime } from "./pipeline.js";
 import { getStore } from "./store.js";
 
 const FIXTURE = fileURLToPath(new URL("../fixtures/github-pull-requests.ndjson", import.meta.url));
@@ -50,7 +52,7 @@ async function main(): Promise<void> {
 
     // --- aggregate + shape + render: IDENTICAL to demo.ts ------------------
     await buildCorePullRequests(store);
-    const rows = await prCycleTimeByAuthor(store, ctx, authz);
+    const rows = await runMetric<CycleTimeRow>(store, ctx, authz, prCycleTime);
     printCycleTime(rows, ctx.principal.displayName);
   } finally {
     await store.close();

@@ -1,17 +1,17 @@
 /**
- * A slice of the aggregate + shape verbs, shared by the demos.
+ * A slice of the aggregate + render verbs, shared by the demos.
  *
- * Extracted so BOTH demos run the *identical* downstream code over data that
- * arrived by different means (hardcoded records vs. the source seam). That the
- * numbers come out the same is the demonstration that a source is a source.
+ * The *shape* verb now lives in `metrics/` as tested `Metric` values, run via
+ * `runMetric()`. What remains here is the transform (raw -> conformed core) and
+ * a render stand-in. Both demos call these so they run identical downstream code
+ * over data that arrived by different means — the source-seam proof.
  *
- * (This is a thin starting point for WS3/WS4 in the roadmap — a real transform
- * runner and metric registry come later; the SQL here will migrate into those.)
+ * (Thin starting point for WS3 in the roadmap — a real transform runner comes
+ * later; this SQL will migrate into it.)
  */
 
-import type { Authorizer } from "./core/authz.js";
-import type { RequestContext } from "./core/principal.js";
 import type { StorageEngine } from "./core/storage.js";
+import type { CycleTimeRow } from "./metrics/pr-cycle-time.js";
 
 /** aggregate: raw GitHub PRs -> a source-agnostic core table. Re-runnable. */
 export async function buildCorePullRequests(store: StorageEngine): Promise<void> {
@@ -26,31 +26,6 @@ export async function buildCorePullRequests(store: StorageEngine): Promise<void>
         TRY_CAST(${jf("merged_at")} AS TIMESTAMP) AS merged_at
     FROM raw_records
     WHERE source = 'github' AND entity = 'pull_request'
-  `);
-}
-
-export interface CycleTimeRow {
-  author: string;
-  merged_prs: number;
-  avg_cycle_hours: number;
-}
-
-/** shape: PR cycle time by author, read behind the authorization checkpoint. */
-export async function prCycleTimeByAuthor(
-  store: StorageEngine,
-  ctx: RequestContext,
-  authz: Authorizer,
-): Promise<CycleTimeRow[]> {
-  authz.authorize(ctx, "read", { kind: "metric", name: "pr_cycle_time" });
-  return store.query<CycleTimeRow>(`
-    SELECT
-        author,
-        COUNT(*)                                                AS merged_prs,
-        ROUND(AVG(date_diff('hour', created_at, merged_at)), 1) AS avg_cycle_hours
-    FROM core_pull_request
-    WHERE merged_at IS NOT NULL
-    GROUP BY author
-    ORDER BY avg_cycle_hours
   `);
 }
 

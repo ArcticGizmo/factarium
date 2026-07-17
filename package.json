@@ -8,10 +8,10 @@
     "demo": "tsx src/demo.ts",
     "demo:collect": "tsx src/demo-collect.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check src",
-    "lint:fix": "biome check --write src",
-    "format": "biome format --write src",
-    "test": "node --test"
+    "lint": "biome check src test",
+    "lint:fix": "biome check --write src test",
+    "format": "biome format --write src test",
+    "test": "node --import tsx --test \"test/**/*.test.ts\""
   },
   "dependencies": {
     "@duckdb/node-api": "^1.5.4-r.1"
