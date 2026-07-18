@@ -58,8 +58,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import BasePage from './BasePage.vue';
-import type { Identity, Person } from '../types';
+import BasePage from '../../components/BasePage.vue';
+import type { Identity, Person } from '../../types';
 
 const emit = defineEmits(['changed']);
 

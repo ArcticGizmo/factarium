@@ -201,8 +201,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue';
-import BasePage from './BasePage.vue';
-import type { Integration, PipelineStep } from '../types';
+import BasePage from '../../components/BasePage.vue';
+import type { Integration, PipelineStep } from '../../types';
 
 const emit = defineEmits(['changed']);
 

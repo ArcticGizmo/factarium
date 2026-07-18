@@ -50,9 +50,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import VChart from 'vue-echarts';
-import BasePage from './BasePage.vue';
-import { lineOption } from '../charts';
-import type { DeliveryData } from '../types';
+import BasePage from '../../components/BasePage.vue';
+import { lineOption } from '../../charts';
+import type { DeliveryData } from '../../types';
 
 const data = ref<DeliveryData | null>(null);
 const error = ref<string | null>(null);

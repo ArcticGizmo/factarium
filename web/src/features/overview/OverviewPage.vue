@@ -39,8 +39,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import BasePage from './BasePage.vue';
-import type { LiveSummary } from '../types';
+import BasePage from '../../components/BasePage.vue';
+import type { LiveSummary } from '../../types';
 
 const data = ref<LiveSummary | null>(null);
 const error = ref<string | null>(null);

@@ -3,7 +3,6 @@
     <v-navigation-drawer permanent color="surface" width="240">
       <div class="px-4 py-4">
         <div class="text-h6">Factarium</div>
-        <div class="text-caption text-medium-emphasis">sync · transform · aggregate · render</div>
       </div>
       <v-divider />
       <v-list nav density="comfortable">

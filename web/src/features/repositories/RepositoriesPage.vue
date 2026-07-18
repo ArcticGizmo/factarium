@@ -39,9 +39,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import VChart from 'vue-echarts';
-import BasePage from './BasePage.vue';
-import { lineOption, barOption } from '../charts';
-import type { RepoActivityData } from '../types';
+import BasePage from '../../components/BasePage.vue';
+import { lineOption, barOption } from '../../charts';
+import type { RepoActivityData } from '../../types';
 
 const data = ref<RepoActivityData | null>(null);
 const error = ref<string | null>(null);
