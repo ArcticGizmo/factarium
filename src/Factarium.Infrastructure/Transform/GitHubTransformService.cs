@@ -10,9 +10,9 @@ namespace Factarium.Infrastructure.Transform;
 
 /// <summary>
 /// Parses stored GitHub JSON into canonical entities, attributing each to a
-/// SourceIdentity (created on demand). Repo/PR context is read from the
-/// <c>repository_full_name</c> / <c>pull_request_number</c> provenance fields the
-/// connector and seeder both add.
+/// SourceIdentity (created on demand). Commits are stored flat (<c>repo</c>,
+/// <c>committer_login</c>, …); pull requests and reviews still carry
+/// <c>repository_full_name</c> / <c>pull_request_number</c> provenance fields.
 /// </summary>
 internal sealed class GitHubTransformService(FactariumDbContext db, TimeProvider clock) : ITransformService
 {
@@ -57,9 +57,17 @@ internal sealed class GitHubTransformService(FactariumDbContext db, TimeProvider
             }
         }
 
+        // Commits carry the committer as flat scalars (committer_login/committer_id).
         foreach (var record in Records(byType, "commit"))
         {
-            Note(Root(record), "author");
+            var payload = Root(record);
+            var login = Str(payload, "committer_login");
+            if (login is not null)
+            {
+                discovered[login] = payload.TryGetProperty("committer_id", out var id) && id.ValueKind == JsonValueKind.Number
+                    ? id.GetInt64().ToString()
+                    : null;
+            }
         }
 
         foreach (var record in Records(byType, "pull_request").Concat(Records(byType, "review")))
@@ -134,7 +142,7 @@ internal sealed class GitHubTransformService(FactariumDbContext db, TimeProvider
         {
             var payload = Root(record);
             var sha = Str(payload, "sha");
-            var repo = Str(payload, "repository_full_name");
+            var repo = Str(payload, "repo");
             if (sha is null || repo is null)
             {
                 continue;
@@ -148,15 +156,11 @@ internal sealed class GitHubTransformService(FactariumDbContext db, TimeProvider
                 existing[key] = commit;
             }
 
-            var login = payload.TryGetProperty("author", out var author) && author.ValueKind == JsonValueKind.Object
-                ? Str(author, "login")
-                : null;
+            var login = Str(payload, "committer_login");
             commit.AuthorLogin = login;
             commit.AuthorIdentityId = Resolve(identities, login);
-            commit.Message = payload.TryGetProperty("commit", out var c) ? Str(c, "message") : null;
-            commit.CommittedAt = payload.TryGetProperty("commit", out var cc) && cc.TryGetProperty("author", out var ca)
-                ? Timestamp(ca, "date")
-                : null;
+            commit.Message = Str(payload, "message");
+            commit.CommittedAt = Timestamp(payload, "committed_at");
         }
 
         await db.SaveChangesAsync(cancellationToken);

@@ -34,28 +34,32 @@ public class GitHubPullSourceTests
             DateTimeOffset.Parse("2026-07-06T00:00:00Z"),
             DateTimeOffset.Parse(cursor.Get("commits:acme/repo1")!));
 
-        // Commit payloads are stored reduced: the big user objects, parents,
-        // verification, node ids and duplicated git author block are dropped.
+        // Commit payloads are stored flat: only the fields Factarium uses, with no
+        // nested objects, user blobs, verification or node ids.
         var commitFact = sink.Facts.Single(f => f is { EntityType: "commit", SourceId: "acme/repo1@aaa" });
         using var doc = JsonDocument.Parse(commitFact.Payload);
         var root = doc.RootElement;
 
+        Assert.Equal("aaa", root.GetProperty("sha").GetString());
+        Assert.Equal("acme/repo1", root.GetProperty("repo").GetString());
+        Assert.Equal("t1", root.GetProperty("tree_sha").GetString());
+        Assert.Equal("first", root.GetProperty("message").GetString());
+        Assert.Equal(1, root.GetProperty("committer_id").GetInt64());
+        Assert.Equal("octo", root.GetProperty("committer_login").GetString());
+        Assert.Equal("Octo", root.GetProperty("committer_name").GetString());
+        Assert.Equal("o@e.com", root.GetProperty("committer_email").GetString());
+        Assert.Equal(0, root.GetProperty("comment_count").GetInt32());
+        Assert.Equal(["p1"], root.GetProperty("parents").EnumerateArray().Select(p => p.GetString()));
+
+        // Nothing nested or bulky survives.
+        Assert.False(root.TryGetProperty("commit", out _));
         Assert.False(root.TryGetProperty("node_id", out _));
-        Assert.False(root.TryGetProperty("parents", out _));
-        Assert.False(root.TryGetProperty("author", out _)); // top-level author user dropped
-
-        var inner = root.GetProperty("commit");
-        Assert.False(inner.TryGetProperty("author", out _)); // git author block dropped
-        Assert.False(inner.TryGetProperty("verification", out _));
-        Assert.Equal("first", inner.GetProperty("message").GetString());
-        Assert.True(inner.TryGetProperty("committer", out _)); // git committer kept
-        Assert.True(inner.TryGetProperty("tree", out _));
-
-        // The committer user survives, reduced to a handful of fields.
-        var committer = root.GetProperty("committer");
-        Assert.Equal("octo", committer.GetProperty("login").GetString());
-        Assert.False(committer.TryGetProperty("node_id", out _));
-        Assert.Equal("acme/repo1", root.GetProperty("repository_full_name").GetString());
+        Assert.False(root.TryGetProperty("author", out _));
+        Assert.Equal(JsonValueKind.Object, root.ValueKind);
+        foreach (var property in root.EnumerateObject())
+        {
+            Assert.NotEqual(JsonValueKind.Object, property.Value.ValueKind);
+        }
     }
 
     [Fact]

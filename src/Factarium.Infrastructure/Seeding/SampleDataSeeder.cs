@@ -104,14 +104,16 @@ internal sealed class SampleDataSeeder(
                 facts.Add(Fact(SourceGitHub, "commit", $"{fullName}@{sha}", new
                 {
                     sha,
-                    commit = new
-                    {
-                        author = new { name = person.Name, email = person.Email, date = Iso(when) },
-                        committer = new { name = person.Name, email = person.Email, date = Iso(when) },
-                        message = $"{PrTitles[rng.Next(PrTitles.Length)]} ({sha[..7]})",
-                    },
-                    author = new { login = person.Login, id = 1000 + Array.IndexOf(People, person) },
-                    repository_full_name = fullName,
+                    repo = fullName,
+                    tree_sha = Sha(rng),
+                    parents = Array.Empty<string>(),
+                    message = $"{PrTitles[rng.Next(PrTitles.Length)]} ({sha[..7]})",
+                    committer_id = 1000 + Array.IndexOf(People, person),
+                    committer_login = person.Login,
+                    committer_name = person.Name,
+                    committer_email = person.Email,
+                    committed_at = Iso(when),
+                    comment_count = 0,
                 }, when));
             }
 

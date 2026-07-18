@@ -271,25 +271,25 @@ interface CommitRow {
 function commit(r: RawRecordView): CommitRow {
   const p = (r.payload ?? {}) as Record<string, any>;
   const sha: string = p.sha ?? r.sourceId ?? '';
-  const message: string = String(p.commit?.message ?? '').split('\n')[0];
+  const repo: string = p.repo ?? '';
+  const message: string = String(p.message ?? '').split('\n')[0];
   return {
     shortHash: sha.slice(0, 7),
     message,
     authors: extractAuthors(p),
-    link: p.html_url ?? null,
-    commentCount: p.commit?.comment_count ?? 0
+    // The commit page (where comments live) is derivable from repo + sha, so we
+    // don't need to store a url.
+    link: repo && sha ? `https://github.com/${repo}/commit/${sha}` : null,
+    commentCount: p.comment_count ?? 0
   };
 }
 
 function extractAuthors(p: Record<string, any>): string[] {
   const names: string[] = [];
-  // Stored commits keep the committer; author fields remain as fallbacks for
-  // older/full payloads.
-  const primary =
-    p.commit?.committer?.name ?? p.committer?.login ?? p.commit?.author?.name ?? p.author?.login;
+  const primary = p.committer_name ?? p.committer_login;
   if (primary) names.push(String(primary));
   // Co-authored-by trailers in the commit message.
-  const message = String(p.commit?.message ?? '');
+  const message = String(p.message ?? '');
   const re = /Co-authored-by:\s*([^<\n]+?)\s*(?:<[^>]*>)?\s*$/gim;
   let m: RegExpExecArray | null;
   while ((m = re.exec(message)) !== null) {

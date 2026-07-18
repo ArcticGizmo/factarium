@@ -147,7 +147,7 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
             var committedAt = CommitDate(commit);
 
             facts.Add(new RawFact(Source, "commit", $"{fullName}@{sha}",
-                ReduceCommit(commit, fullName), committedAt));
+                FlattenCommit(commit, fullName), committedAt));
             if (committedAt is not null && (maxCommitted is null || committedAt > maxCommitted))
             {
                 maxCommitted = committedAt;
@@ -191,51 +191,75 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
     }
 
     /// <summary>
-    /// Reduces a GitHub commit to the fields Factarium actually uses, dropping the
-    /// large embedded author/committer user objects (keeping a slim committer),
-    /// parents, verification, node ids, and the duplicated git author block.
+    /// Flattens a GitHub commit into the handful of fields Factarium actually uses:
+    /// identity (sha, repo), git history (tree sha + parents), the message, who
+    /// committed (id/login/name/email), when, and the comment count. Everything
+    /// else (embedded user objects, verification, node ids) is discarded.
     /// </summary>
-    private static string ReduceCommit(JsonElement commit, string fullName)
+    private static string FlattenCommit(JsonElement commit, string fullName)
     {
-        var node = new JsonObject();
-        CopyIfPresent(commit, node, "sha");
-        CopyIfPresent(commit, node, "url");
-        CopyIfPresent(commit, node, "html_url");
-        CopyIfPresent(commit, node, "comments_url");
+        var inner = Object(commit, "commit");
+        var gitCommitter = Object(inner, "committer");
+        var userCommitter = Object(commit, "committer");
 
-        if (commit.TryGetProperty("commit", out var inner))
+        var node = new JsonObject
         {
-            var innerNode = new JsonObject();
-            CopyIfPresent(inner, innerNode, "url");
-            CopyIfPresent(inner, innerNode, "tree");
-            CopyIfPresent(inner, innerNode, "message");
-            CopyIfPresent(inner, innerNode, "committer");
-            CopyIfPresent(inner, innerNode, "comment_count");
-            node["commit"] = innerNode;
-        }
+            ["sha"] = Str(commit, "sha"),
+            ["repo"] = fullName,
+            ["tree_sha"] = Str(Object(inner, "tree"), "sha"),
+            ["parents"] = ParentShas(commit),
+            ["message"] = Str(inner, "message"),
+            ["committer_id"] = UserId(userCommitter),
+            ["committer_login"] = Str(userCommitter, "login"),
+            ["committer_name"] = Str(gitCommitter, "name"),
+            ["committer_email"] = Str(gitCommitter, "email"),
+            ["committed_at"] = CommitDate(commit)?.ToUniversalTime().ToString("o"),
+            ["comment_count"] = CommentCount(inner),
+        };
 
-        if (commit.TryGetProperty("committer", out var committerUser)
-            && committerUser.ValueKind == JsonValueKind.Object)
-        {
-            var committerNode = new JsonObject();
-            CopyIfPresent(committerUser, committerNode, "id");
-            CopyIfPresent(committerUser, committerNode, "type");
-            CopyIfPresent(committerUser, committerNode, "login");
-            CopyIfPresent(committerUser, committerNode, "html_url");
-            CopyIfPresent(committerUser, committerNode, "avatar_url");
-            node["committer"] = committerNode;
-        }
-
-        node["repository_full_name"] = fullName;
         return node.ToJsonString();
     }
 
-    private static void CopyIfPresent(JsonElement source, JsonObject target, string name)
+    private static JsonElement Object(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Object
+            ? value
+            : default;
+
+    private static string? Str(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static JsonNode? UserId(JsonElement user) =>
+        user.ValueKind == JsonValueKind.Object
+        && user.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.Number
+            ? JsonValue.Create(id.GetInt64())
+            : null;
+
+    private static int CommentCount(JsonElement inner) =>
+        inner.ValueKind == JsonValueKind.Object
+        && inner.TryGetProperty("comment_count", out var count) && count.ValueKind == JsonValueKind.Number
+            ? count.GetInt32()
+            : 0;
+
+    private static JsonArray ParentShas(JsonElement commit)
     {
-        if (source.TryGetProperty(name, out var value))
+        var array = new JsonArray();
+        if (commit.TryGetProperty("parents", out var parents) && parents.ValueKind == JsonValueKind.Array)
         {
-            target[name] = JsonNode.Parse(value.GetRawText());
+            foreach (var parent in parents.EnumerateArray())
+            {
+                var sha = Str(parent, "sha");
+                if (sha is not null)
+                {
+                    array.Add(sha);
+                }
+            }
         }
+
+        return array;
     }
 
     private static string Id(JsonElement element) =>
