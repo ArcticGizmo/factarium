@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, shallowRef, onMounted } from 'vue'
 import LiveSummaryPanel from './components/LiveSummaryPanel.vue'
 import RepoActivityDashboard from './components/RepoActivityDashboard.vue'
 import DeliveryDashboard from './components/DeliveryDashboard.vue'
@@ -7,12 +7,29 @@ import ClaudeCodeDashboard from './components/ClaudeCodeDashboard.vue'
 import IdentityMappingPanel from './components/IdentityMappingPanel.vue'
 import SchedulesPanel from './components/SchedulesPanel.vue'
 
+// First-round information architecture: one page per distinct reason to be here.
+// Overview is the live pulse; the middle three are the "what happened" dashboards;
+// People and Sources are the "how the data gets here / who it belongs to" admin pages.
+const navItems = [
+  { key: 'overview', title: 'Overview', icon: 'mdi-pulse', component: LiveSummaryPanel },
+  { key: 'repositories', title: 'Repositories', icon: 'mdi-source-branch', component: RepoActivityDashboard },
+  { key: 'delivery', title: 'Delivery', icon: 'mdi-rocket-launch-outline', component: DeliveryDashboard },
+  { key: 'claude-code', title: 'Claude Code', icon: 'mdi-robot-outline', component: ClaudeCodeDashboard },
+  { key: 'people', title: 'People', icon: 'mdi-account-group-outline', component: IdentityMappingPanel },
+  { key: 'sources', title: 'Sources', icon: 'mdi-sync', component: SchedulesPanel },
+]
+
+const current = ref(navItems[0])
+const currentComponent = shallowRef(navItems[0].component)
+
+function select(item) {
+  current.value = item
+  currentComponent.value = item.component
+}
+
 const health = ref(null)
 const me = ref(null)
 const error = ref(null)
-const dashboard = ref(null)
-const delivery = ref(null)
-const claudeCode = ref(null)
 
 async function load() {
   try {
@@ -27,21 +44,37 @@ async function load() {
   }
 }
 
-// Re-pull dashboards after anything that changes the aggregates (mapping, pipeline run).
-function refreshDashboards() {
-  dashboard.value?.load()
-  delivery.value?.load()
-  claudeCode.value?.load()
-}
-
 onMounted(load)
 </script>
 
 <template>
   <v-app>
+    <v-navigation-drawer permanent color="surface" width="240">
+      <div class="px-4 py-4">
+        <div class="text-h6">Factarium</div>
+        <div class="text-caption text-medium-emphasis">
+          sync · transform · aggregate · render
+        </div>
+      </div>
+      <v-divider />
+      <v-list nav density="comfortable">
+        <v-list-item
+          v-for="item in navItems"
+          :key="item.key"
+          :active="current.key === item.key"
+          :prepend-icon="item.icon"
+          :title="item.title"
+          @click="select(item)"
+        />
+      </v-list>
+    </v-navigation-drawer>
+
     <v-app-bar color="surface" flat>
-      <v-app-bar-title>Factarium</v-app-bar-title>
+      <v-app-bar-title>{{ current.title }}</v-app-bar-title>
       <template #append>
+        <span v-if="me" class="text-caption text-medium-emphasis mr-4">
+          {{ me.displayName }}
+        </span>
         <v-chip
           v-if="health"
           :color="health.status === 'healthy' ? 'green' : 'orange'"
@@ -55,31 +88,8 @@ onMounted(load)
 
     <v-main>
       <v-container>
-        <div class="text-caption text-medium-emphasis mb-3">
-          sync · transform · aggregate · render{{ me ? ` — signed in as ${me.displayName}` : '' }}
-        </div>
         <div v-if="error" class="text-error mb-2">API error: {{ error }}</div>
-
-        <v-row>
-          <v-col cols="12">
-            <LiveSummaryPanel />
-          </v-col>
-          <v-col cols="12">
-            <RepoActivityDashboard ref="dashboard" />
-          </v-col>
-          <v-col cols="12">
-            <DeliveryDashboard ref="delivery" />
-          </v-col>
-          <v-col cols="12">
-            <ClaudeCodeDashboard ref="claudeCode" />
-          </v-col>
-          <v-col cols="12">
-            <IdentityMappingPanel @changed="refreshDashboards" />
-          </v-col>
-          <v-col cols="12">
-            <SchedulesPanel @changed="refreshDashboards" />
-          </v-col>
-        </v-row>
+        <component :is="currentComponent" />
       </v-container>
     </v-main>
   </v-app>
