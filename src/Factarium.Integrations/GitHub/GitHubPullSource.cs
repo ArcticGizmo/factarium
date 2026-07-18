@@ -144,13 +144,10 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
         await foreach (var commit in client.GetPagedAsync(url, token, cancellationToken))
         {
             var sha = commit.GetProperty("sha").GetString()!;
-            var committedAt = commit.TryGetProperty("commit", out var c)
-                              && c.TryGetProperty("author", out var a)
-                ? GetTimestamp(a, "date")
-                : null;
+            var committedAt = CommitDate(commit);
 
             facts.Add(new RawFact(Source, "commit", $"{fullName}@{sha}",
-                Enrich(commit, ("repository_full_name", fullName)), committedAt));
+                ReduceCommit(commit, fullName), committedAt));
             if (committedAt is not null && (maxCommitted is null || committedAt > maxCommitted))
             {
                 maxCommitted = committedAt;
@@ -179,6 +176,66 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
         }
 
         return node.ToJsonString();
+    }
+
+    /// <summary>Commit timestamp: the committer date, falling back to the author date.</summary>
+    private static DateTimeOffset? CommitDate(JsonElement commit)
+    {
+        if (!commit.TryGetProperty("commit", out var inner))
+        {
+            return null;
+        }
+
+        return (inner.TryGetProperty("committer", out var committer) ? GetTimestamp(committer, "date") : null)
+               ?? (inner.TryGetProperty("author", out var author) ? GetTimestamp(author, "date") : null);
+    }
+
+    /// <summary>
+    /// Reduces a GitHub commit to the fields Factarium actually uses, dropping the
+    /// large embedded author/committer user objects (keeping a slim committer),
+    /// parents, verification, node ids, and the duplicated git author block.
+    /// </summary>
+    private static string ReduceCommit(JsonElement commit, string fullName)
+    {
+        var node = new JsonObject();
+        CopyIfPresent(commit, node, "sha");
+        CopyIfPresent(commit, node, "url");
+        CopyIfPresent(commit, node, "html_url");
+        CopyIfPresent(commit, node, "comments_url");
+
+        if (commit.TryGetProperty("commit", out var inner))
+        {
+            var innerNode = new JsonObject();
+            CopyIfPresent(inner, innerNode, "url");
+            CopyIfPresent(inner, innerNode, "tree");
+            CopyIfPresent(inner, innerNode, "message");
+            CopyIfPresent(inner, innerNode, "committer");
+            CopyIfPresent(inner, innerNode, "comment_count");
+            node["commit"] = innerNode;
+        }
+
+        if (commit.TryGetProperty("committer", out var committerUser)
+            && committerUser.ValueKind == JsonValueKind.Object)
+        {
+            var committerNode = new JsonObject();
+            CopyIfPresent(committerUser, committerNode, "id");
+            CopyIfPresent(committerUser, committerNode, "type");
+            CopyIfPresent(committerUser, committerNode, "login");
+            CopyIfPresent(committerUser, committerNode, "html_url");
+            CopyIfPresent(committerUser, committerNode, "avatar_url");
+            node["committer"] = committerNode;
+        }
+
+        node["repository_full_name"] = fullName;
+        return node.ToJsonString();
+    }
+
+    private static void CopyIfPresent(JsonElement source, JsonObject target, string name)
+    {
+        if (source.TryGetProperty(name, out var value))
+        {
+            target[name] = JsonNode.Parse(value.GetRawText());
+        }
     }
 
     private static string Id(JsonElement element) =>

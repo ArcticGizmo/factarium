@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Factarium.Application.Sync;
 using Factarium.Integrations.GitHub;
 using Factarium.Tests.TestDoubles;
@@ -32,6 +33,29 @@ public class GitHubPullSourceTests
         Assert.Equal(
             DateTimeOffset.Parse("2026-07-06T00:00:00Z"),
             DateTimeOffset.Parse(cursor.Get("commits:acme/repo1")!));
+
+        // Commit payloads are stored reduced: the big user objects, parents,
+        // verification, node ids and duplicated git author block are dropped.
+        var commitFact = sink.Facts.Single(f => f is { EntityType: "commit", SourceId: "acme/repo1@aaa" });
+        using var doc = JsonDocument.Parse(commitFact.Payload);
+        var root = doc.RootElement;
+
+        Assert.False(root.TryGetProperty("node_id", out _));
+        Assert.False(root.TryGetProperty("parents", out _));
+        Assert.False(root.TryGetProperty("author", out _)); // top-level author user dropped
+
+        var inner = root.GetProperty("commit");
+        Assert.False(inner.TryGetProperty("author", out _)); // git author block dropped
+        Assert.False(inner.TryGetProperty("verification", out _));
+        Assert.Equal("first", inner.GetProperty("message").GetString());
+        Assert.True(inner.TryGetProperty("committer", out _)); // git committer kept
+        Assert.True(inner.TryGetProperty("tree", out _));
+
+        // The committer user survives, reduced to a handful of fields.
+        var committer = root.GetProperty("committer");
+        Assert.Equal("octo", committer.GetProperty("login").GetString());
+        Assert.False(committer.TryGetProperty("node_id", out _));
+        Assert.Equal("acme/repo1", root.GetProperty("repository_full_name").GetString());
     }
 
     [Fact]
@@ -98,7 +122,40 @@ public class GitHubPullSourceTests
             ("/repos/acme/repo1/pulls/2/reviews", _) => StubHttpMessageHandler.Json("[]"),
 
             ("/repos/acme/repo1/commits", _) => StubHttpMessageHandler.Json(
-                """[{"sha":"aaa","commit":{"author":{"date":"2026-07-05T00:00:00Z"}}},{"sha":"bbb","commit":{"author":{"date":"2026-07-06T00:00:00Z"}}}]"""),
+                """
+                [
+                  {
+                    "sha": "aaa",
+                    "node_id": "N_aaa",
+                    "url": "https://api.github.com/repos/acme/repo1/commits/aaa",
+                    "html_url": "https://github.com/acme/repo1/commit/aaa",
+                    "comments_url": "https://api.github.com/repos/acme/repo1/commits/aaa/comments",
+                    "author": { "login": "octo", "id": 1, "node_id": "U_1", "type": "User", "html_url": "https://github.com/octo", "avatar_url": "https://a/1" },
+                    "committer": { "login": "octo", "id": 1, "node_id": "U_1", "type": "User", "html_url": "https://github.com/octo", "avatar_url": "https://a/1" },
+                    "parents": [{ "sha": "p1" }],
+                    "commit": {
+                      "url": "https://api.github.com/repos/acme/repo1/git/commits/aaa",
+                      "tree": { "sha": "t1", "url": "tu" },
+                      "message": "first",
+                      "author": { "date": "2026-07-05T00:00:00Z", "name": "Octo", "email": "o@e.com" },
+                      "committer": { "date": "2026-07-05T00:00:00Z", "name": "Octo", "email": "o@e.com" },
+                      "verification": { "verified": false, "reason": "unsigned" },
+                      "comment_count": 0
+                    }
+                  },
+                  {
+                    "sha": "bbb",
+                    "node_id": "N_bbb",
+                    "parents": [{ "sha": "aaa" }],
+                    "committer": { "login": "octo", "id": 1, "node_id": "U_1", "type": "User", "html_url": "https://github.com/octo", "avatar_url": "https://a/1" },
+                    "commit": {
+                      "message": "second",
+                      "committer": { "date": "2026-07-06T00:00:00Z", "name": "Octo", "email": "o@e.com" },
+                      "comment_count": 2
+                    }
+                  }
+                ]
+                """),
 
             _ => StubHttpMessageHandler.NotFound(),
         };

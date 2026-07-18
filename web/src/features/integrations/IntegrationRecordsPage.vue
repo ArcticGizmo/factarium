@@ -283,7 +283,10 @@ function commit(r: RawRecordView): CommitRow {
 
 function extractAuthors(p: Record<string, any>): string[] {
   const names: string[] = [];
-  const primary = p.commit?.author?.name ?? p.author?.login;
+  // Stored commits keep the committer; author fields remain as fallbacks for
+  // older/full payloads.
+  const primary =
+    p.commit?.committer?.name ?? p.committer?.login ?? p.commit?.author?.name ?? p.author?.login;
   if (primary) names.push(String(primary));
   // Co-authored-by trailers in the commit message.
   const message = String(p.commit?.message ?? '');
