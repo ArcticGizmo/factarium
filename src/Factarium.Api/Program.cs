@@ -86,6 +86,7 @@ try
             status = dbReachable ? "healthy" : "degraded",
             database = dbReachable ? "connected" : "unreachable",
             version,
+            environment = app.Environment.EnvironmentName,
         });
     });
 
@@ -107,6 +108,12 @@ try
     app.MapPipelineEndpoints();
     app.MapLiveEndpoints();
     app.MapOtlpEndpoints();
+
+    // Debug-only endpoints (e.g. clear the database) exist ONLY in local dev.
+    if (app.Environment.IsDevelopment())
+    {
+        app.MapDebugEndpoints();
+    }
 
     // SPA fallback: any non-API route serves index.html for client-side routing.
     app.MapFallbackToFile("index.html");

@@ -7,6 +7,7 @@ const integrations = ref([])
 const steps = ref([])
 const error = ref(null)
 const busy = ref(false)
+const isDev = ref(false)
 
 const form = reactive({
   show: false,
@@ -95,12 +96,44 @@ function fmt(ts) {
 
 const statusColor = { Success: 'green', Failed: 'red', Running: 'blue', Never: 'grey', success: 'green', failed: 'red', never: 'grey' }
 
-onMounted(load)
+async function resetDatabase() {
+  if (!window.confirm('Clear ALL synced data (integrations, raw records, canonical, metrics, people)? This cannot be undone.')) {
+    return
+  }
+  busy.value = true
+  try {
+    await fetch('/api/debug/reset', { method: 'POST' })
+    await refresh()
+  } finally {
+    busy.value = false
+  }
+}
+
+onMounted(async () => {
+  await load()
+  try {
+    const health = await fetch('/api/health').then((r) => r.json())
+    isDev.value = health.environment === 'Development'
+  } catch {
+    isDev.value = false
+  }
+})
 </script>
 
 <template>
   <v-card title="Sources, schedules & pipeline">
     <template #append>
+      <v-btn
+        v-if="isDev"
+        size="small"
+        variant="tonal"
+        color="red"
+        :loading="busy"
+        prepend-icon="mdi-delete-alert"
+        @click="resetDatabase"
+      >
+        Clear database (debug)
+      </v-btn>
       <v-btn size="small" variant="text" @click="load">Refresh</v-btn>
     </template>
     <v-card-text>
