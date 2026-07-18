@@ -52,7 +52,7 @@ internal sealed class IntegrationSyncService(
                 IntegrationId = integration.Id,
                 IntegrationName = integration.Name,
                 Credential = credential,
-                Settings = ParseDictionary(integration.SettingsJson),
+                Config = BuildConfig(integration),
                 Cursor = cursor,
                 Sink = sink,
             };
@@ -93,6 +93,14 @@ internal sealed class IntegrationSyncService(
 
         return result;
     }
+
+    private static SourceConfig? BuildConfig(Integration integration) => integration switch
+    {
+        GitHubIntegration gh => new GitHubSourceConfig(gh.Org, gh.Repos),
+        JiraIntegration jira => new JiraSourceConfig(jira.BaseUrl, jira.Email, jira.ProjectKeys, jira.Jql),
+        ClaudeIntegration => new ClaudeSourceConfig(),
+        _ => null,
+    };
 
     private static Dictionary<string, string?> ParseDictionary(string? json)
     {

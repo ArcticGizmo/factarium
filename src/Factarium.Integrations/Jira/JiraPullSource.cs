@@ -6,10 +6,10 @@ using Microsoft.Extensions.Logging;
 namespace Factarium.Integrations.Jira;
 
 /// <summary>
-/// Pull source for Jira Cloud. Requires <c>baseUrl</c> and <c>email</c> settings
-/// and an API token credential; optional <c>projectKeys</c> (csv) or <c>jql</c>.
-/// Syncs issues (with changelog) into the bronze tier, advancing an updated-time
-/// cursor.
+/// Pull source for Jira Cloud. Requires a site URL and account email
+/// (<see cref="JiraSourceConfig"/>) plus an API token credential; optional project
+/// keys or raw JQL. Syncs issues (with changelog) into the bronze tier, advancing an
+/// updated-time cursor.
 /// </summary>
 public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource> logger) : IPullSource
 {
@@ -20,9 +20,14 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
 
     public async Task<SyncResult> PullAsync(SyncContext context, CancellationToken cancellationToken)
     {
-        if (!TryGet(context, "baseUrl", out var baseUrl) || !TryGet(context, "email", out var email))
+        if (context.Config is not JiraSourceConfig config)
         {
-            return SyncResult.Failed("Jira integration requires 'baseUrl' and 'email' settings.");
+            return SyncResult.Failed("Jira integration is misconfigured (expected Jira configuration).");
+        }
+
+        if (string.IsNullOrWhiteSpace(config.BaseUrl) || string.IsNullOrWhiteSpace(config.Email))
+        {
+            return SyncResult.Failed("Jira integration requires a site URL and an account email.");
         }
 
         if (string.IsNullOrWhiteSpace(context.Credential))
@@ -30,8 +35,10 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
             return SyncResult.Failed("Jira integration requires an API token credential.");
         }
 
+        var baseUrl = config.BaseUrl;
+        var email = config.Email;
         var lastCursor = ParseDate(context.Cursor.Get(CursorKey));
-        var jql = BuildJql(context, lastCursor);
+        var jql = BuildJql(config, lastCursor);
 
         var facts = new List<RawFact>();
         DateTimeOffset? maxUpdated = lastCursor;
@@ -63,17 +70,20 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
         return SyncResult.Ok(written);
     }
 
-    private static string BuildJql(SyncContext context, DateTimeOffset? cursor)
+    private static string BuildJql(JiraSourceConfig config, DateTimeOffset? cursor)
     {
         var clauses = new List<string>();
 
-        if (TryGet(context, "jql", out var jql))
+        if (!string.IsNullOrWhiteSpace(config.Jql))
         {
-            clauses.Add($"({jql})");
+            clauses.Add($"({config.Jql})");
         }
-        else if (TryGet(context, "projectKeys", out var projects))
+        else
         {
-            var keys = projects.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var keys = config.ProjectKeys
+                .Where(k => !string.IsNullOrWhiteSpace(k))
+                .Select(k => k.Trim())
+                .ToArray();
             if (keys.Length > 0)
             {
                 clauses.Add($"project in ({string.Join(',', keys.Select(k => $"\"{k}\""))})");
@@ -87,18 +97,6 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
 
         var where = string.Join(" AND ", clauses);
         return where.Length > 0 ? $"{where} ORDER BY updated ASC" : "ORDER BY updated ASC";
-    }
-
-    private static bool TryGet(SyncContext context, string key, out string value)
-    {
-        if (context.Settings.TryGetValue(key, out var raw) && !string.IsNullOrWhiteSpace(raw))
-        {
-            value = raw;
-            return true;
-        }
-
-        value = string.Empty;
-        return false;
     }
 
     private static DateTimeOffset? ParseDateElement(JsonElement element, string property) =>

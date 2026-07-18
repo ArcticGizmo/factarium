@@ -2,7 +2,7 @@ namespace Factarium.Application.Sync;
 
 /// <summary>
 /// Everything a source needs for one sync run: its integration identity, the
-/// decrypted credential, integration-specific settings, a cursor store for
+/// decrypted credential, its strongly-typed configuration, a cursor store for
 /// incremental watermarks, and the sink to write facts into.
 /// </summary>
 public sealed class SyncContext
@@ -14,8 +14,11 @@ public sealed class SyncContext
     /// <summary>Decrypted credential (e.g. a PAT). Null when the source needs none.</summary>
     public string? Credential { get; init; }
 
-    /// <summary>Integration-specific configuration (e.g. org, repo filters).</summary>
-    public required IReadOnlyDictionary<string, string?> Settings { get; init; }
+    /// <summary>
+    /// Strongly-typed, source-specific configuration. Pull sources cast it to their
+    /// own <see cref="SourceConfig"/> subtype; push sources need none, so it is null.
+    /// </summary>
+    public SourceConfig? Config { get; init; }
 
     public required ICursorStore Cursor { get; init; }
 

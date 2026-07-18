@@ -22,12 +22,11 @@ public class JiraPullSourceTests
             IntegrationId = Guid.NewGuid(),
             IntegrationName = "jira",
             Credential = "api-token",
-            Settings = new Dictionary<string, string?>
-            {
-                ["baseUrl"] = "https://acme.atlassian.net",
-                ["email"] = "dev@example.com",
-                ["projectKeys"] = "QAI",
-            },
+            Config = new JiraSourceConfig(
+                BaseUrl: "https://acme.atlassian.net",
+                Email: "dev@example.com",
+                ProjectKeys: ["QAI"],
+                Jql: null),
             Cursor = cursor,
             Sink = sink,
         };
@@ -55,7 +54,7 @@ public class JiraPullSourceTests
             IntegrationId = Guid.NewGuid(),
             IntegrationName = "jira",
             Credential = "api-token",
-            Settings = new Dictionary<string, string?>(),
+            Config = new JiraSourceConfig(BaseUrl: null, Email: null, ProjectKeys: [], Jql: null),
             Cursor = new InMemoryCursorStore(),
             Sink = new RecordingRawRecordSink(),
         };

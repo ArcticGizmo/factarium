@@ -93,15 +93,34 @@ export interface Person {
 }
 
 // --- /api/integrations and /api/pipeline ---
+export interface GitHubConfig {
+  org: string | null;
+  repos: string[];
+}
+
+export interface JiraConfig {
+  baseUrl: string | null;
+  email: string | null;
+  projectKeys: string[];
+  jql: string | null;
+}
+
+// One row from GET /api/integrations. `config` carries the type-specific fields
+// (null for Claude, which is push-based). Id is the backend Guid.
 export interface Integration {
-  id: number;
+  id: string;
   name: string;
   type: string;
   enabled: boolean;
   scheduleCron: string | null;
   lastRunStatus: string;
+  lastRunStartedAt: string | null;
+  lastRunCompletedAt: string | null;
   lastRunError: string | null;
+  lastRunRecordsWritten: number;
   nextRunAt: string | null;
+  hasCredential: boolean;
+  config: GitHubConfig | JiraConfig | null;
 }
 
 export interface PipelineStep {

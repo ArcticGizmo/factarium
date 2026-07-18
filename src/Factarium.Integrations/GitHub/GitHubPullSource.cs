@@ -18,12 +18,17 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
 
     public async Task<SyncResult> PullAsync(SyncContext context, CancellationToken cancellationToken)
     {
+        if (context.Config is not GitHubSourceConfig config)
+        {
+            return SyncResult.Failed("GitHub integration is misconfigured (expected GitHub configuration).");
+        }
+
         var token = context.Credential;
-        var (repositories, written) = await ResolveRepositoriesAsync(context, token, cancellationToken);
+        var (repositories, written) = await ResolveRepositoriesAsync(context, config, token, cancellationToken);
 
         if (repositories.Count == 0)
         {
-            return SyncResult.Failed("No repositories resolved. Set 'org' and/or 'repos' in integration settings.");
+            return SyncResult.Failed("No repositories resolved. Set an organization and/or specific repos.");
         }
 
         foreach (var fullName in repositories)
@@ -36,32 +41,30 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
     }
 
     private async Task<(List<string> Repositories, int Written)> ResolveRepositoriesAsync(
-        SyncContext context, string? token, CancellationToken cancellationToken)
+        SyncContext context, GitHubSourceConfig config, string? token, CancellationToken cancellationToken)
     {
         var repositories = new List<string>();
         var facts = new List<RawFact>();
 
-        // Explicit repos: settings["repos"] = "owner/name,owner/name2"
-        if (context.Settings.TryGetValue("repos", out var reposCsv) && !string.IsNullOrWhiteSpace(reposCsv))
+        // Explicit repos: "owner/name" slugs.
+        foreach (var slug in config.Repos.Where(r => !string.IsNullOrWhiteSpace(r)).Select(r => r.Trim()))
         {
-            foreach (var slug in reposCsv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            var repo = await client.GetObjectAsync($"repos/{slug}", token, cancellationToken);
+            if (repo is { } element)
             {
-                var repo = await client.GetObjectAsync($"repos/{slug}", token, cancellationToken);
-                if (repo is { } element)
-                {
-                    facts.Add(RepositoryFact(element));
-                    repositories.Add(slug);
-                }
-                else
-                {
-                    logger.LogWarning("GitHub repository {Slug} not found or inaccessible", slug);
-                }
+                facts.Add(RepositoryFact(element));
+                repositories.Add(slug);
+            }
+            else
+            {
+                logger.LogWarning("GitHub repository {Slug} not found or inaccessible", slug);
             }
         }
 
-        // Org enumeration: settings["org"] = "acme"
-        if (context.Settings.TryGetValue("org", out var org) && !string.IsNullOrWhiteSpace(org))
+        // Org enumeration.
+        if (!string.IsNullOrWhiteSpace(config.Org))
         {
+            var org = config.Org;
             await foreach (var repo in client.GetPagedAsync($"orgs/{org}/repos?per_page=100", token, cancellationToken))
             {
                 var fullName = repo.GetProperty("full_name").GetString();

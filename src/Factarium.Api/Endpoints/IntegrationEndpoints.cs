@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Factarium.Api.Scheduling;
 using Factarium.Application.Security;
 using Factarium.Domain.Sync;
@@ -7,18 +6,32 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Factarium.Api.Endpoints;
 
-public sealed record CreateIntegrationRequest(
-    string Type,
+public sealed record CreateGitHubIntegrationRequest(
     string Name,
     string? Cron,
     bool Enabled,
-    Dictionary<string, string?>? Settings,
+    string? Org,
+    List<string>? Repos,
     string? Credential);
 
+public sealed record CreateJiraIntegrationRequest(
+    string Name,
+    string? Cron,
+    bool Enabled,
+    string? BaseUrl,
+    string? Email,
+    List<string>? ProjectKeys,
+    string? Jql,
+    string? Credential);
+
+public sealed record CreateClaudeIntegrationRequest(
+    string Name,
+    bool Enabled);
+
+/// <summary>Update the fields common to every integration (schedule, enablement, credential).</summary>
 public sealed record UpdateIntegrationRequest(
     bool Enabled,
     string? Cron,
-    Dictionary<string, string?>? Settings,
     string? Credential);
 
 public static class IntegrationEndpoints
@@ -48,49 +61,65 @@ public static class IntegrationEndpoints
                     i.LastRunRecordsWritten,
                     NextRunAt = await scheduler.GetNextRunAsync(i.Id, ct),
                     HasCredential = i.EncryptedCredential is not null,
+                    Config = ConfigFor(i),
                 });
             }
 
             return Results.Ok(result);
         });
 
-        group.MapPost("", async (
-            CreateIntegrationRequest request,
+        group.MapPost("github", (
+            CreateGitHubIntegrationRequest request,
             FactariumDbContext db,
             ICredentialProtector protector,
             IIntegrationScheduler scheduler,
             TimeProvider clock,
             CancellationToken ct) =>
-        {
-            if (string.IsNullOrWhiteSpace(request.Type) || string.IsNullOrWhiteSpace(request.Name))
-            {
-                return Results.BadRequest("Type and Name are required.");
-            }
+            CreateAsync(
+                new GitHubIntegration
+                {
+                    Name = request.Name,
+                    Enabled = request.Enabled,
+                    ScheduleCron = request.Cron,
+                    Org = Blank(request.Org),
+                    Repos = Clean(request.Repos),
+                },
+                request.Credential, db, protector, scheduler, clock, ct));
 
-            var integration = new Integration
-            {
-                Id = Guid.NewGuid(),
-                Type = request.Type,
-                Name = request.Name,
-                Enabled = request.Enabled,
-                ScheduleCron = request.Cron,
-                SettingsJson = request.Settings is null ? null : JsonSerializer.Serialize(request.Settings),
-                EncryptedCredential = string.IsNullOrWhiteSpace(request.Credential)
-                    ? null
-                    : protector.Protect(request.Credential),
-                CreatedAt = clock.GetUtcNow(),
-            };
+        group.MapPost("jira", (
+            CreateJiraIntegrationRequest request,
+            FactariumDbContext db,
+            ICredentialProtector protector,
+            IIntegrationScheduler scheduler,
+            TimeProvider clock,
+            CancellationToken ct) =>
+            CreateAsync(
+                new JiraIntegration
+                {
+                    Name = request.Name,
+                    Enabled = request.Enabled,
+                    ScheduleCron = request.Cron,
+                    BaseUrl = Blank(request.BaseUrl),
+                    Email = Blank(request.Email),
+                    ProjectKeys = Clean(request.ProjectKeys),
+                    Jql = Blank(request.Jql),
+                },
+                request.Credential, db, protector, scheduler, clock, ct));
 
-            db.Integrations.Add(integration);
-            await db.SaveChangesAsync(ct);
-
-            if (integration is { Enabled: true, ScheduleCron: not null })
-            {
-                await scheduler.ScheduleAsync(integration, ct);
-            }
-
-            return Results.Created($"/api/integrations/{integration.Id}", new { integration.Id });
-        });
+        group.MapPost("claude", (
+            CreateClaudeIntegrationRequest request,
+            FactariumDbContext db,
+            ICredentialProtector protector,
+            IIntegrationScheduler scheduler,
+            TimeProvider clock,
+            CancellationToken ct) =>
+            CreateAsync(
+                new ClaudeIntegration
+                {
+                    Name = request.Name,
+                    Enabled = request.Enabled,
+                },
+                credential: null, db, protector, scheduler, clock, ct));
 
         group.MapPut("{id:guid}", async (
             Guid id,
@@ -107,12 +136,7 @@ public static class IntegrationEndpoints
             }
 
             integration.Enabled = request.Enabled;
-            integration.ScheduleCron = string.IsNullOrWhiteSpace(request.Cron) ? null : request.Cron;
-            if (request.Settings is not null)
-            {
-                integration.SettingsJson = JsonSerializer.Serialize(request.Settings);
-            }
-
+            integration.ScheduleCron = Blank(request.Cron);
             if (!string.IsNullOrWhiteSpace(request.Credential))
             {
                 integration.EncryptedCredential = protector.Protect(request.Credential);
@@ -154,4 +178,50 @@ public static class IntegrationEndpoints
 
         return app;
     }
+
+    private static async Task<IResult> CreateAsync(
+        Integration integration,
+        string? credential,
+        FactariumDbContext db,
+        ICredentialProtector protector,
+        IIntegrationScheduler scheduler,
+        TimeProvider clock,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(integration.Name))
+        {
+            return Results.BadRequest("Name is required.");
+        }
+
+        integration.Id = Guid.NewGuid();
+        integration.CreatedAt = clock.GetUtcNow();
+        integration.EncryptedCredential = string.IsNullOrWhiteSpace(credential)
+            ? null
+            : protector.Protect(credential);
+
+        db.Integrations.Add(integration);
+        await db.SaveChangesAsync(ct);
+
+        if (integration is { Enabled: true, ScheduleCron: not null })
+        {
+            await scheduler.ScheduleAsync(integration, ct);
+        }
+
+        return Results.Created($"/api/integrations/{integration.Id}", new { integration.Id });
+    }
+
+    /// <summary>The type-specific fields projected for a row, so each page can bind its own config.</summary>
+    private static object? ConfigFor(Integration integration) => integration switch
+    {
+        GitHubIntegration gh => new { gh.Org, gh.Repos },
+        JiraIntegration jira => new { jira.BaseUrl, jira.Email, jira.ProjectKeys, jira.Jql },
+        _ => null,
+    };
+
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static List<string> Clean(List<string>? values) =>
+        values is null
+            ? []
+            : values.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()).ToList();
 }

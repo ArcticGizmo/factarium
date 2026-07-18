@@ -6,14 +6,17 @@
       </div>
       <v-divider />
       <v-list nav density="comfortable">
-        <!-- Nav order and visibility are authored here, independent of the
-             route table. Reorder freely; add v-if to show/hide an item. -->
         <NavItem to="/overview" icon="mdi-pulse" title="Overview" />
         <NavItem to="/repositories" icon="mdi-source-branch" title="Repositories" />
         <NavItem to="/delivery" icon="mdi-rocket-launch-outline" title="Delivery" />
         <NavItem to="/claude-code" icon="mdi-robot-outline" title="Claude Code" />
         <NavItem to="/people" icon="mdi-account-group-outline" title="People" />
-        <NavItem to="/sources" icon="mdi-sync" title="Sources" />
+        <NavGroup icon="mdi-transit-connection-variant" title="Integrations">
+          <NavItem to="/integrations/github" icon="mdi-github" title="GitHub" />
+          <NavItem to="/integrations/jira" icon="mdi-jira" title="Jira" />
+          <NavItem to="/integrations/claude" icon="mdi-creation" title="Claude" />
+          <NavItem to="/integrations/pipeline" icon="mdi-sync" title="Pipeline" />
+        </NavGroup>
       </v-list>
     </v-navigation-drawer>
 
@@ -40,6 +43,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import NavItem from './components/NavItem.vue';
+import NavGroup from './components/NavGroup.vue';
 
 const health = ref<{ status: string; database: string } | null>(null);
 const me = ref<{ displayName: string } | null>(null);

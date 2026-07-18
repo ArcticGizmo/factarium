@@ -5,7 +5,10 @@ import RepositoriesPage from '../features/repositories/RepositoriesPage.vue';
 import DeliveryPage from '../features/delivery/DeliveryPage.vue';
 import ClaudeCodePage from '../features/claude-code/ClaudeCodePage.vue';
 import PeoplePage from '../features/people/PeoplePage.vue';
-import SourcesPage from '../features/sources/SourcesPage.vue';
+import GitHubIntegrationsPage from '../features/integrations/GitHubIntegrationsPage.vue';
+import JiraIntegrationsPage from '../features/integrations/JiraIntegrationsPage.vue';
+import ClaudeIntegrationsPage from '../features/integrations/ClaudeIntegrationsPage.vue';
+import PipelinePage from '../features/integrations/PipelinePage.vue';
 
 export const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/overview' },
@@ -14,7 +17,13 @@ export const routes: RouteRecordRaw[] = [
   { path: '/delivery', name: 'delivery', component: DeliveryPage },
   { path: '/claude-code', name: 'claude-code', component: ClaudeCodePage },
   { path: '/people', name: 'people', component: PeoplePage },
-  { path: '/sources', name: 'sources', component: SourcesPage }
+  { path: '/integrations', redirect: '/integrations/github' },
+  { path: '/integrations/github', name: 'integrations-github', component: GitHubIntegrationsPage },
+  { path: '/integrations/jira', name: 'integrations-jira', component: JiraIntegrationsPage },
+  { path: '/integrations/claude', name: 'integrations-claude', component: ClaudeIntegrationsPage },
+  { path: '/integrations/pipeline', name: 'integrations-pipeline', component: PipelinePage },
+  // Catch-all: any unknown path falls back to the overview.
+  { path: '/:pathMatch(.*)*', name: 'not-found', redirect: '/overview' }
 ];
 
 export default createRouter({

@@ -69,7 +69,7 @@ public class GitHubPullSourceTests
             IntegrationId = Guid.NewGuid(),
             IntegrationName = "test",
             Credential = "token",
-            Settings = new Dictionary<string, string?> { ["repos"] = "acme/repo1" },
+            Config = new GitHubSourceConfig(Org: null, Repos: ["acme/repo1"]),
             Cursor = cursor,
             Sink = sink,
         };

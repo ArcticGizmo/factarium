@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Factarium.Application.Sync;
 using Factarium.Domain.Sync;
 using Factarium.Infrastructure.Persistence;
@@ -36,7 +35,7 @@ internal sealed class PushIngestionService(
             IntegrationId = integration.Id,
             IntegrationName = integration.Name,
             Credential = null,
-            Settings = new Dictionary<string, string?>(),
+            Config = null,
             Cursor = new DictionaryCursorStore(),
             Sink = sink,
         };
@@ -73,19 +72,27 @@ internal sealed class PushIngestionService(
             return integration;
         }
 
-        integration = new Integration
-        {
-            Id = Guid.NewGuid(),
-            Type = sourceType,
-            Name = IntegrationNames.GetValueOrDefault(sourceType, $"{sourceType} (push)"),
-            Enabled = true,
-            ScheduleCron = null,
-            SettingsJson = JsonSerializer.Serialize(new Dictionary<string, string?> { ["mode"] = "push" }),
-            CreatedAt = clock.GetUtcNow(),
-        };
-
+        integration = CreatePushIntegration(sourceType);
         db.Integrations.Add(integration);
         await db.SaveChangesAsync(cancellationToken);
+        return integration;
+    }
+
+    private Integration CreatePushIntegration(string sourceType)
+    {
+        var name = IntegrationNames.GetValueOrDefault(sourceType, $"{sourceType} (push)");
+
+        Integration integration = sourceType switch
+        {
+            ClaudeIntegration.TypeName => new ClaudeIntegration { Name = name },
+            _ => throw new InvalidOperationException(
+                $"No integration entity mapping for push source '{sourceType}'."),
+        };
+
+        integration.Id = Guid.NewGuid();
+        integration.Enabled = true;
+        integration.ScheduleCron = null;
+        integration.CreatedAt = clock.GetUtcNow();
         return integration;
     }
 }

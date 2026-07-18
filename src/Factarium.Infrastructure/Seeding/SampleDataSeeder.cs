@@ -62,8 +62,7 @@ internal sealed class SampleDataSeeder(
     public async Task<SampleSeedResult> SeedAsync(SampleSeedOptions options, CancellationToken cancellationToken)
     {
         var github = await EnsureIntegrationAsync(
-            GitHubIntegrationName, SourceGitHub,
-            new Dictionary<string, string?> { ["org"] = Owner }, cancellationToken);
+            new GitHubIntegration { Name = GitHubIntegrationName, Org = Owner }, cancellationToken);
 
         var rng = new Random(options.Seed);
         var now = clock.GetUtcNow();
@@ -173,8 +172,7 @@ internal sealed class SampleDataSeeder(
 
         // --- Jira issues (distinct identities for the same people) ---
         var jira = await EnsureIntegrationAsync(
-            JiraIntegrationName, SourceJira,
-            new Dictionary<string, string?> { ["baseUrl"] = JiraBaseUrl, ["email"] = "dev@example.com" },
+            new JiraIntegration { Name = JiraIntegrationName, BaseUrl = JiraBaseUrl, Email = "dev@example.com" },
             cancellationToken);
 
         var issueFacts = new List<RawFact>();
@@ -212,8 +210,7 @@ internal sealed class SampleDataSeeder(
 
         // --- Claude Code OTEL usage metrics (raw as the push receiver would store them) ---
         var claude = await EnsureIntegrationAsync(
-            ClaudeIntegrationName, SourceClaude,
-            new Dictionary<string, string?> { ["mode"] = "push" }, cancellationToken);
+            new ClaudeIntegration { Name = ClaudeIntegrationName }, cancellationToken);
 
         var usageFacts = new List<RawFact>();
         for (var p = 0; p < peopleCount; p++)
@@ -265,28 +262,22 @@ internal sealed class SampleDataSeeder(
     }
 
     private async Task<Integration> EnsureIntegrationAsync(
-        string name, string type, Dictionary<string, string?> settings, CancellationToken cancellationToken)
+        Integration prototype, CancellationToken cancellationToken)
     {
-        var integration = await db.Integrations.FirstOrDefaultAsync(i => i.Name == name, cancellationToken);
-        if (integration is not null)
+        var existing = await db.Integrations.FirstOrDefaultAsync(i => i.Name == prototype.Name, cancellationToken);
+        if (existing is not null)
         {
-            return integration;
+            return existing;
         }
 
-        integration = new Integration
-        {
-            Id = Guid.NewGuid(),
-            Type = type,
-            Name = name,
-            Enabled = false,
-            ScheduleCron = null,
-            SettingsJson = JsonSerializer.Serialize(settings),
-            CreatedAt = clock.GetUtcNow(),
-        };
+        prototype.Id = Guid.NewGuid();
+        prototype.Enabled = false;
+        prototype.ScheduleCron = null;
+        prototype.CreatedAt = clock.GetUtcNow();
 
-        db.Integrations.Add(integration);
+        db.Integrations.Add(prototype);
         await db.SaveChangesAsync(cancellationToken);
-        return integration;
+        return prototype;
     }
 
     private static RawFact Fact(string source, string entityType, string sourceId, object payload, DateTimeOffset? updatedAt) =>
