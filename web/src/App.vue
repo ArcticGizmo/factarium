@@ -1,34 +1,3 @@
-<script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
-import { routes } from './router'
-
-// Nav is derived from the route table: every route with meta.nav shows up here.
-const navItems = routes.filter((r) => r.meta?.nav)
-
-const route = useRoute()
-const currentTitle = computed(() => route.meta?.title ?? 'Factarium')
-
-const health = ref(null)
-const me = ref(null)
-const error = ref(null)
-
-async function load() {
-  try {
-    const [h, m] = await Promise.all([
-      fetch('/api/health').then((r) => r.json()),
-      fetch('/api/me').then((r) => r.json()),
-    ])
-    health.value = h
-    me.value = m
-  } catch (e) {
-    error.value = String(e)
-  }
-}
-
-onMounted(load)
-</script>
-
 <template>
   <v-app>
     <v-navigation-drawer permanent color="surface" width="240">
@@ -44,8 +13,8 @@ onMounted(load)
           v-for="item in navItems"
           :key="item.path"
           :to="item.path"
-          :prepend-icon="item.meta.icon"
-          :title="item.meta.title"
+          :prepend-icon="item.meta?.icon"
+          :title="item.meta?.title"
         />
       </v-list>
     </v-navigation-drawer>
@@ -75,3 +44,34 @@ onMounted(load)
     </v-main>
   </v-app>
 </template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted } from "vue";
+import { useRoute } from "vue-router";
+import { routes } from "./router";
+
+// Nav is derived from the route table: every route with meta.nav shows up here.
+const navItems = routes.filter((r) => r.meta?.nav);
+
+const route = useRoute();
+const currentTitle = computed(() => route.meta?.title ?? "Factarium");
+
+const health = ref<{ status: string; database: string } | null>(null);
+const me = ref<{ displayName: string } | null>(null);
+const error = ref<string | null>(null);
+
+async function load() {
+  try {
+    const [h, m] = await Promise.all([
+      fetch("/api/health").then((r) => r.json()),
+      fetch("/api/me").then((r) => r.json()),
+    ]);
+    health.value = h;
+    me.value = m;
+  } catch (e) {
+    error.value = String(e);
+  }
+}
+
+onMounted(load);
+</script>

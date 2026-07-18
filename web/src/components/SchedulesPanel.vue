@@ -1,136 +1,3 @@
-<script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-
-const emit = defineEmits(['changed'])
-
-const typeOptions = [
-  { title: 'GitHub — repos, PRs, commits, reviews', value: 'github' },
-  { title: 'Jira — issues & status', value: 'jira' },
-]
-
-const credentialHint = computed(() =>
-  form.type === 'github'
-    ? 'GitHub → Settings → Developer settings → Personal access tokens (repo read scope). Stored encrypted.'
-    : 'Create at id.atlassian.com → Security → API tokens. Stored encrypted.',
-)
-
-const integrations = ref([])
-const steps = ref([])
-const error = ref(null)
-const busy = ref(false)
-const isDev = ref(false)
-
-const form = reactive({
-  show: false,
-  type: 'github',
-  name: '',
-  cron: '',
-  org: '',
-  repos: '',
-  baseUrl: '',
-  email: '',
-  projectKeys: '',
-  credential: '',
-})
-
-async function load() {
-  try {
-    ;[integrations.value, steps.value] = await Promise.all([
-      fetch('/api/integrations').then((r) => r.json()),
-      fetch('/api/pipeline').then((r) => r.json()),
-    ])
-    error.value = null
-  } catch (e) {
-    error.value = String(e)
-  }
-}
-
-async function save(row) {
-  await fetch(`/api/integrations/${row.id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled: row.enabled, cron: row.scheduleCron || null }),
-  })
-  await refresh()
-}
-
-async function syncNow(id) {
-  await fetch(`/api/integrations/${id}/sync`, { method: 'POST' })
-  setTimeout(refresh, 1500)
-}
-
-async function remove(id) {
-  await fetch(`/api/integrations/${id}`, { method: 'DELETE' })
-  await refresh()
-}
-
-async function runPipeline() {
-  busy.value = true
-  try {
-    await fetch('/api/pipeline/run', { method: 'POST' })
-    await refresh()
-  } finally {
-    busy.value = false
-  }
-}
-
-async function createIntegration() {
-  const settings =
-    form.type === 'github'
-      ? { org: form.org || null, repos: form.repos || null }
-      : { baseUrl: form.baseUrl || null, email: form.email || null, projectKeys: form.projectKeys || null }
-
-  await fetch('/api/integrations', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      type: form.type,
-      name: form.name,
-      cron: form.cron || null,
-      enabled: !!form.cron,
-      settings,
-      credential: form.credential || null,
-    }),
-  })
-  Object.assign(form, { show: false, name: '', cron: '', org: '', repos: '', baseUrl: '', email: '', projectKeys: '', credential: '' })
-  await refresh()
-}
-
-async function refresh() {
-  await load()
-  emit('changed')
-}
-
-function fmt(ts) {
-  return ts ? new Date(ts).toLocaleString() : '—'
-}
-
-const statusColor = { Success: 'green', Failed: 'red', Running: 'blue', Never: 'grey', success: 'green', failed: 'red', never: 'grey' }
-
-async function resetDatabase() {
-  if (!window.confirm('Clear ALL synced data (integrations, raw records, canonical, metrics, people)? This cannot be undone.')) {
-    return
-  }
-  busy.value = true
-  try {
-    await fetch('/api/debug/reset', { method: 'POST' })
-    await refresh()
-  } finally {
-    busy.value = false
-  }
-}
-
-onMounted(async () => {
-  await load()
-  try {
-    const health = await fetch('/api/health').then((r) => r.json())
-    isDev.value = health.environment === 'Development'
-  } catch {
-    isDev.value = false
-  }
-})
-</script>
-
 <template>
   <v-card title="Sources, schedules & pipeline">
     <template #append>
@@ -324,6 +191,140 @@ onMounted(async () => {
     </v-card-text>
   </v-card>
 </template>
+
+<script setup lang="ts">
+import { ref, reactive, computed, onMounted } from 'vue'
+import type { Integration, PipelineStep } from '../types'
+
+const emit = defineEmits(['changed'])
+
+const typeOptions = [
+  { title: 'GitHub — repos, PRs, commits, reviews', value: 'github' },
+  { title: 'Jira — issues & status', value: 'jira' },
+]
+
+const credentialHint = computed(() =>
+  form.type === 'github'
+    ? 'GitHub → Settings → Developer settings → Personal access tokens (repo read scope). Stored encrypted.'
+    : 'Create at id.atlassian.com → Security → API tokens. Stored encrypted.',
+)
+
+const integrations = ref<Integration[]>([])
+const steps = ref<PipelineStep[]>([])
+const error = ref<string | null>(null)
+const busy = ref(false)
+const isDev = ref(false)
+
+const form = reactive({
+  show: false,
+  type: 'github',
+  name: '',
+  cron: '',
+  org: '',
+  repos: '',
+  baseUrl: '',
+  email: '',
+  projectKeys: '',
+  credential: '',
+})
+
+async function load() {
+  try {
+    ;[integrations.value, steps.value] = await Promise.all([
+      fetch('/api/integrations').then((r) => r.json()),
+      fetch('/api/pipeline').then((r) => r.json()),
+    ])
+    error.value = null
+  } catch (e) {
+    error.value = String(e)
+  }
+}
+
+async function save(row: Integration) {
+  await fetch(`/api/integrations/${row.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: row.enabled, cron: row.scheduleCron || null }),
+  })
+  await refresh()
+}
+
+async function syncNow(id: number) {
+  await fetch(`/api/integrations/${id}/sync`, { method: 'POST' })
+  setTimeout(refresh, 1500)
+}
+
+async function remove(id: number) {
+  await fetch(`/api/integrations/${id}`, { method: 'DELETE' })
+  await refresh()
+}
+
+async function runPipeline() {
+  busy.value = true
+  try {
+    await fetch('/api/pipeline/run', { method: 'POST' })
+    await refresh()
+  } finally {
+    busy.value = false
+  }
+}
+
+async function createIntegration() {
+  const settings =
+    form.type === 'github'
+      ? { org: form.org || null, repos: form.repos || null }
+      : { baseUrl: form.baseUrl || null, email: form.email || null, projectKeys: form.projectKeys || null }
+
+  await fetch('/api/integrations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: form.type,
+      name: form.name,
+      cron: form.cron || null,
+      enabled: !!form.cron,
+      settings,
+      credential: form.credential || null,
+    }),
+  })
+  Object.assign(form, { show: false, name: '', cron: '', org: '', repos: '', baseUrl: '', email: '', projectKeys: '', credential: '' })
+  await refresh()
+}
+
+async function refresh() {
+  await load()
+  emit('changed')
+}
+
+function fmt(ts: string | null | undefined) {
+  return ts ? new Date(ts).toLocaleString() : '—'
+}
+
+const statusColor: Record<string, string> = { Success: 'green', Failed: 'red', Running: 'blue', Never: 'grey', success: 'green', failed: 'red', never: 'grey' }
+
+async function resetDatabase() {
+  if (!window.confirm('Clear ALL synced data (integrations, raw records, canonical, metrics, people)? This cannot be undone.')) {
+    return
+  }
+  busy.value = true
+  try {
+    await fetch('/api/debug/reset', { method: 'POST' })
+    await refresh()
+  } finally {
+    busy.value = false
+  }
+}
+
+onMounted(async () => {
+  await load()
+  try {
+    const health = await fetch('/api/health').then((r) => r.json())
+    isDev.value = health.environment === 'Development'
+  } catch {
+    isDev.value = false
+  }
+})
+</script>
 
 <style scoped>
 .section-title {

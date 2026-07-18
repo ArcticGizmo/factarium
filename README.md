@@ -50,12 +50,12 @@ dotnet run --project src/Factarium.Cli -- seed
 #     restart (some structural changes still prompt/require one).
 dotnet watch --project src/Factarium.Api    # or `dotnet run` for no hot reload
 
-# 3b. For frontend hot-reload, run the Vite dev server at http://localhost:5173.
+# 3b. For frontend hot-reload, run the Vite dev server at http://localhost:4601.
 #     It proxies /api -> http://localhost:4600 (override with VITE_API_PROXY).
 cd web && npm install && npm run dev
 ```
 
-During front-end work, develop against **http://localhost:5173** — Vite HMR reflects
+During front-end work, develop against **http://localhost:4601** — Vite HMR reflects
 `.vue`/JS edits instantly, proxying API calls to the `dotnet watch` process on 4600.
 Two long-running processes, both hot-reloading; you rarely restart either by hand.
 
@@ -66,7 +66,7 @@ docker compose -f deploy/docker-compose.yml up
 ```
 
 - API + built SPA: http://localhost:4600
-- Vite dev server (hot reload, proxies `/api`): http://localhost:5173
+- Vite dev server (hot reload, proxies `/api`): http://localhost:4601
 - Health: http://localhost:4600/api/health
 
 ## Ship a single-exe

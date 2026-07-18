@@ -1,6 +1,14 @@
 // Chart styling shared across dashboards. Colors are the validated dataviz
 // reference palette (dark steps — the app runs a dark Vuetify theme). Categorical
 // slots are assigned in fixed order: slot 1 blue, slot 2 green.
+import type { EChartsOption } from 'echarts'
+import type { DayPoint, LabelValue } from './types'
+
+export interface Series {
+  name: string
+  points: DayPoint[]
+}
+
 export const palette = {
   series: ['#3987e5', '#008300'],
   text: '#c3c2b7',
@@ -15,18 +23,21 @@ const axisBase = {
 }
 
 // Align multiple day/value series onto one sorted union-of-days x-axis.
-export function alignSeries(seriesList) {
+export function alignSeries(seriesList: Series[]) {
   const days = [...new Set(seriesList.flatMap((s) => s.points.map((p) => p.day)))].sort()
   const index = new Map(days.map((d, i) => [d, i]))
   const lines = seriesList.map((s) => {
-    const values = new Array(days.length).fill(0)
-    for (const p of s.points) values[index.get(p.day)] = p.value
+    const values = new Array<number>(days.length).fill(0)
+    for (const p of s.points) {
+      const i = index.get(p.day)
+      if (i !== undefined) values[i] = p.value
+    }
     return { name: s.name, values }
   })
   return { days, lines }
 }
 
-export function lineOption(seriesList, { legend = false } = {}) {
+export function lineOption(seriesList: Series[], { legend = false } = {}): EChartsOption {
   const { days, lines } = alignSeries(seriesList)
   return {
     color: palette.series,
@@ -45,11 +56,11 @@ export function lineOption(seriesList, { legend = false } = {}) {
       lineStyle: { width: 2 },
       data: l.values,
     })),
-  }
+  } as EChartsOption
 }
 
 // Horizontal bar for a single magnitude series (commits by person), value-labelled.
-export function barOption(items) {
+export function barOption(items: LabelValue[]): EChartsOption {
   const sorted = [...items].sort((a, b) => a.value - b.value)
   return {
     color: palette.series,
@@ -66,5 +77,5 @@ export function barOption(items) {
         label: { show: true, position: 'right', color: palette.text },
       },
     ],
-  }
+  } as EChartsOption
 }

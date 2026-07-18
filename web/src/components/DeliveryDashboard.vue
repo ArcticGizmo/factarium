@@ -1,56 +1,3 @@
-<script setup>
-import { ref, computed, onMounted } from 'vue'
-import VChart from 'vue-echarts'
-import { lineOption } from '../charts'
-
-const data = ref(null)
-const error = ref(null)
-const loading = ref(false)
-
-async function load() {
-  loading.value = true
-  error.value = null
-  try {
-    data.value = await fetch('/api/dashboards/delivery').then((r) => r.json())
-  } catch (e) {
-    error.value = String(e)
-  } finally {
-    loading.value = false
-  }
-}
-
-defineExpose({ load })
-onMounted(load)
-
-const branch = computed(() => data.value?.deployProxyBranch ?? 'main')
-
-const tiles = computed(() => {
-  const t = data.value?.totals
-  if (!t) return []
-  return [
-    { label: 'Deployments', value: t.deploys },
-    { label: 'Avg lead time (h)', value: t.avgLeadTimeHours },
-    { label: 'PRs merged', value: t.prsMerged },
-    { label: 'Issues resolved', value: t.issuesResolved },
-    { label: 'Avg cycle time (h)', value: t.avgIssueCycleHours },
-    { label: 'Avg review wait (h)', value: t.avgReviewLatencyHours },
-  ]
-})
-
-const deploysOption = computed(() =>
-  lineOption([{ name: 'Deployments', points: data.value?.deploysByDay ?? [] }]))
-const leadTimeOption = computed(() =>
-  lineOption([{ name: 'Lead time (h)', points: data.value?.leadTimeByDay ?? [] }]))
-const throughputOption = computed(() =>
-  lineOption([{ name: 'PRs merged', points: data.value?.prsMergedByDay ?? [] }]))
-const issuesOption = computed(() =>
-  lineOption([
-    { name: 'Issues resolved', points: data.value?.issuesResolvedByDay ?? [] },
-  ]))
-const cycleOption = computed(() =>
-  lineOption([{ name: 'Cycle time (h)', points: data.value?.cycleTimeByDay ?? [] }]))
-</script>
-
 <template>
   <v-card title="Delivery (DORA-ish)">
     <template #append>
@@ -99,6 +46,60 @@ const cycleOption = computed(() =>
     </v-card-text>
   </v-card>
 </template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import VChart from 'vue-echarts'
+import { lineOption } from '../charts'
+import type { DeliveryData } from '../types'
+
+const data = ref<DeliveryData | null>(null)
+const error = ref<string | null>(null)
+const loading = ref(false)
+
+async function load() {
+  loading.value = true
+  error.value = null
+  try {
+    data.value = await fetch('/api/dashboards/delivery').then((r) => r.json())
+  } catch (e) {
+    error.value = String(e)
+  } finally {
+    loading.value = false
+  }
+}
+
+defineExpose({ load })
+onMounted(load)
+
+const branch = computed(() => data.value?.deployProxyBranch ?? 'main')
+
+const tiles = computed(() => {
+  const t = data.value?.totals
+  if (!t) return []
+  return [
+    { label: 'Deployments', value: t.deploys },
+    { label: 'Avg lead time (h)', value: t.avgLeadTimeHours },
+    { label: 'PRs merged', value: t.prsMerged },
+    { label: 'Issues resolved', value: t.issuesResolved },
+    { label: 'Avg cycle time (h)', value: t.avgIssueCycleHours },
+    { label: 'Avg review wait (h)', value: t.avgReviewLatencyHours },
+  ]
+})
+
+const deploysOption = computed(() =>
+  lineOption([{ name: 'Deployments', points: data.value?.deploysByDay ?? [] }]))
+const leadTimeOption = computed(() =>
+  lineOption([{ name: 'Lead time (h)', points: data.value?.leadTimeByDay ?? [] }]))
+const throughputOption = computed(() =>
+  lineOption([{ name: 'PRs merged', points: data.value?.prsMergedByDay ?? [] }]))
+const issuesOption = computed(() =>
+  lineOption([
+    { name: 'Issues resolved', points: data.value?.issuesResolvedByDay ?? [] },
+  ]))
+const cycleOption = computed(() =>
+  lineOption([{ name: 'Cycle time (h)', points: data.value?.cycleTimeByDay ?? [] }]))
+</script>
 
 <style scoped>
 .tile {

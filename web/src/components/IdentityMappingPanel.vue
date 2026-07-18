@@ -1,64 +1,3 @@
-<script setup>
-import { ref, onMounted } from 'vue'
-
-const emit = defineEmits(['changed'])
-
-const identities = ref([])
-const people = ref([])
-const newPersonName = ref('')
-const selectedPerson = ref({})
-const error = ref(null)
-
-async function load() {
-  error.value = null
-  try {
-    ;[identities.value, people.value] = await Promise.all([
-      fetch('/api/identities').then((r) => r.json()),
-      fetch('/api/people').then((r) => r.json()),
-    ])
-  } catch (e) {
-    error.value = String(e)
-  }
-}
-
-async function createPerson() {
-  const name = newPersonName.value.trim()
-  if (!name) return
-  await fetch('/api/people', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ displayName: name }),
-  })
-  newPersonName.value = ''
-  await load()
-}
-
-async function link(identityId) {
-  const personId = selectedPerson.value[identityId]
-  if (!personId) return
-  await fetch(`/api/identities/${identityId}/link`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ personId }),
-  })
-  await afterChange()
-}
-
-async function unlink(identityId) {
-  await fetch(`/api/identities/${identityId}/unlink`, { method: 'POST' })
-  await afterChange()
-}
-
-async function afterChange() {
-  await load()
-  emit('changed')
-}
-
-const personOptions = () => people.value.map((p) => ({ title: p.displayName, value: p.id }))
-
-onMounted(load)
-</script>
-
 <template>
   <v-card title="People & identity mapping">
     <template #append>
@@ -119,3 +58,65 @@ onMounted(load)
     </v-card-text>
   </v-card>
 </template>
+
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import type { Identity, Person } from '../types'
+
+const emit = defineEmits(['changed'])
+
+const identities = ref<Identity[]>([])
+const people = ref<Person[]>([])
+const newPersonName = ref('')
+const selectedPerson = ref<Record<number, number | undefined>>({})
+const error = ref<string | null>(null)
+
+async function load() {
+  error.value = null
+  try {
+    ;[identities.value, people.value] = await Promise.all([
+      fetch('/api/identities').then((r) => r.json()),
+      fetch('/api/people').then((r) => r.json()),
+    ])
+  } catch (e) {
+    error.value = String(e)
+  }
+}
+
+async function createPerson() {
+  const name = newPersonName.value.trim()
+  if (!name) return
+  await fetch('/api/people', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ displayName: name }),
+  })
+  newPersonName.value = ''
+  await load()
+}
+
+async function link(identityId: number) {
+  const personId = selectedPerson.value[identityId]
+  if (!personId) return
+  await fetch(`/api/identities/${identityId}/link`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ personId }),
+  })
+  await afterChange()
+}
+
+async function unlink(identityId: number) {
+  await fetch(`/api/identities/${identityId}/unlink`, { method: 'POST' })
+  await afterChange()
+}
+
+async function afterChange() {
+  await load()
+  emit('changed')
+}
+
+const personOptions = () => people.value.map((p) => ({ title: p.displayName, value: p.id }))
+
+onMounted(load)
+</script>

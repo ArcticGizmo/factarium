@@ -53,7 +53,7 @@ try
 
     const string devCorsPolicy = "spa-dev";
     builder.Services.AddCors(options => options.AddPolicy(devCorsPolicy, policy => policy
-        .WithOrigins("http://localhost:5173")
+        .WithOrigins("http://localhost:4601")
         .AllowAnyHeader()
         .AllowAnyMethod()));
 

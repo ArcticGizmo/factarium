@@ -8,7 +8,7 @@ export default defineConfig(() => {
   return {
     plugins: [vue()],
     server: {
-      port: 5173,
+      port: 4601,
       proxy: {
         '/api': { target: apiProxy, changeOrigin: true },
       },

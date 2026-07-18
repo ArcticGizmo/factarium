@@ -1,10 +1,50 @@
-<script setup>
+<template>
+  <v-card title="Repo / PR activity">
+    <template #append>
+      <v-btn size="small" variant="text" :loading="loading" @click="load">Refresh</v-btn>
+    </template>
+    <v-card-text>
+      <div v-if="error" class="text-error mb-2">{{ error }}</div>
+
+      <v-row dense class="mb-2">
+        <v-col v-for="tile in tiles" :key="tile.label" cols="6" sm="4" md="2">
+          <div class="tile">
+            <div class="tile-value">{{ tile.value }}</div>
+            <div class="tile-label">{{ tile.label }}</div>
+          </div>
+        </v-col>
+      </v-row>
+
+      <v-row>
+        <v-col cols="12" md="6">
+          <div class="chart-title">Commits over time</div>
+          <v-chart class="chart" :option="commitsOption" autoresize />
+        </v-col>
+        <v-col cols="12" md="6">
+          <div class="chart-title">Pull requests over time</div>
+          <v-chart class="chart" :option="prOption" autoresize />
+        </v-col>
+        <v-col cols="12" md="6">
+          <div class="chart-title">Commits by person</div>
+          <v-chart class="chart" :option="byActorOption" autoresize />
+        </v-col>
+        <v-col cols="12" md="6">
+          <div class="chart-title">Time to first review (avg hours/day)</div>
+          <v-chart class="chart" :option="latencyOption" autoresize />
+        </v-col>
+      </v-row>
+    </v-card-text>
+  </v-card>
+</template>
+
+<script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import VChart from 'vue-echarts'
 import { lineOption, barOption } from '../charts'
+import type { RepoActivityData } from '../types'
 
-const data = ref(null)
-const error = ref(null)
+const data = ref<RepoActivityData | null>(null)
+const error = ref<string | null>(null)
 const loading = ref(false)
 
 async function load() {
@@ -52,45 +92,6 @@ const latencyOption = computed(() =>
 
 const byActorOption = computed(() => barOption(data.value?.commitsByActor ?? []))
 </script>
-
-<template>
-  <v-card title="Repo / PR activity">
-    <template #append>
-      <v-btn size="small" variant="text" :loading="loading" @click="load">Refresh</v-btn>
-    </template>
-    <v-card-text>
-      <div v-if="error" class="text-error mb-2">{{ error }}</div>
-
-      <v-row dense class="mb-2">
-        <v-col v-for="tile in tiles" :key="tile.label" cols="6" sm="4" md="2">
-          <div class="tile">
-            <div class="tile-value">{{ tile.value }}</div>
-            <div class="tile-label">{{ tile.label }}</div>
-          </div>
-        </v-col>
-      </v-row>
-
-      <v-row>
-        <v-col cols="12" md="6">
-          <div class="chart-title">Commits over time</div>
-          <v-chart class="chart" :option="commitsOption" autoresize />
-        </v-col>
-        <v-col cols="12" md="6">
-          <div class="chart-title">Pull requests over time</div>
-          <v-chart class="chart" :option="prOption" autoresize />
-        </v-col>
-        <v-col cols="12" md="6">
-          <div class="chart-title">Commits by person</div>
-          <v-chart class="chart" :option="byActorOption" autoresize />
-        </v-col>
-        <v-col cols="12" md="6">
-          <div class="chart-title">Time to first review (avg hours/day)</div>
-          <v-chart class="chart" :option="latencyOption" autoresize />
-        </v-col>
-      </v-row>
-    </v-card-text>
-  </v-card>
-</template>
 
 <style scoped>
 .tile {
