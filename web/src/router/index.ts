@@ -7,53 +7,17 @@ import ClaudeCodeDashboard from '../components/ClaudeCodeDashboard.vue'
 import IdentityMappingPanel from '../components/IdentityMappingPanel.vue'
 import SchedulesPanel from '../components/SchedulesPanel.vue'
 
-// `title` is the page's own heading (shown in the app bar) — a route concern.
-// The left-nav menu (labels, icons, order, visibility) is authored separately
-// in App.vue via <NavItem>, so nav display is decoupled from this table.
-declare module 'vue-router' {
-  interface RouteMeta {
-    title?: string
-  }
-}
-
+// This table maps URLs to page components only. A page's title/identity is
+// supplied by the page itself via the <BasePage> layout, and the left-nav menu
+// is authored in App.vue via <NavItem> — both independent of this table.
 export const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/overview' },
-  {
-    path: '/overview',
-    name: 'overview',
-    component: LiveSummaryPanel,
-    meta: { title: 'Overview' },
-  },
-  {
-    path: '/repositories',
-    name: 'repositories',
-    component: RepoActivityDashboard,
-    meta: { title: 'Repositories' },
-  },
-  {
-    path: '/delivery',
-    name: 'delivery',
-    component: DeliveryDashboard,
-    meta: { title: 'Delivery' },
-  },
-  {
-    path: '/claude-code',
-    name: 'claude-code',
-    component: ClaudeCodeDashboard,
-    meta: { title: 'Claude Code' },
-  },
-  {
-    path: '/people',
-    name: 'people',
-    component: IdentityMappingPanel,
-    meta: { title: 'People' },
-  },
-  {
-    path: '/sources',
-    name: 'sources',
-    component: SchedulesPanel,
-    meta: { title: 'Sources' },
-  },
+  { path: '/overview', name: 'overview', component: LiveSummaryPanel },
+  { path: '/repositories', name: 'repositories', component: RepoActivityDashboard },
+  { path: '/delivery', name: 'delivery', component: DeliveryDashboard },
+  { path: '/claude-code', name: 'claude-code', component: ClaudeCodeDashboard },
+  { path: '/people', name: 'people', component: IdentityMappingPanel },
+  { path: '/sources', name: 'sources', component: SchedulesPanel },
 ]
 
 export default createRouter({

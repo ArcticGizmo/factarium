@@ -21,7 +21,6 @@
     </v-navigation-drawer>
 
     <v-app-bar color="surface" flat>
-      <v-app-bar-title>{{ currentTitle }}</v-app-bar-title>
       <template #append>
         <span v-if="me" class="text-caption text-medium-emphasis mr-4">
           {{ me.displayName }}
@@ -47,12 +46,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
-import { useRoute } from "vue-router";
+import { ref, onMounted } from "vue";
 import NavItem from "./components/NavItem.vue";
-
-const route = useRoute();
-const currentTitle = computed(() => route.meta?.title ?? "Factarium");
 
 const health = ref<{ status: string; database: string } | null>(null);
 const me = ref<{ displayName: string } | null>(null);

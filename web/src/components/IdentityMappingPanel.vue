@@ -1,66 +1,66 @@
 <template>
-  <v-card title="People & identity mapping">
-    <template #append>
+  <BasePage title="People" subtitle="Identity mapping">
+    <template #actions>
       <v-btn size="small" variant="text" @click="load">Refresh</v-btn>
     </template>
-    <v-card-text>
-      <div v-if="error" class="text-error mb-2">{{ error }}</div>
 
-      <div class="d-flex align-center ga-2 mb-4" style="max-width: 460px">
-        <v-text-field
-          v-model="newPersonName"
-          label="New person name"
-          density="compact"
-          hide-details
-          @keyup.enter="createPerson"
-        />
-        <v-btn color="primary" variant="tonal" @click="createPerson">Add</v-btn>
-      </div>
+    <div v-if="error" class="text-error mb-2">{{ error }}</div>
 
-      <v-table density="comfortable">
-        <thead>
-          <tr>
-            <th>Identity</th>
-            <th>Source</th>
-            <th>Mapped to</th>
-            <th style="width: 320px">Map</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="i in identities" :key="i.id">
-            <td>{{ i.login }}</td>
-            <td>{{ i.source }}</td>
-            <td>
-              <v-chip v-if="i.personName" color="green" size="x-small" variant="flat">
-                {{ i.personName }}
-              </v-chip>
-              <span v-else class="text-medium-emphasis">unmapped</span>
-            </td>
-            <td>
-              <div class="d-flex align-center ga-2">
-                <v-select
-                  v-model="selectedPerson[i.id]"
-                  :items="personOptions()"
-                  label="Person"
-                  density="compact"
-                  hide-details
-                  style="max-width: 200px"
-                />
-                <v-btn size="x-small" color="primary" variant="tonal" @click="link(i.id)">Link</v-btn>
-                <v-btn v-if="i.personId" size="x-small" variant="text" @click="unlink(i.id)">
-                  Unlink
-                </v-btn>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </v-table>
-    </v-card-text>
-  </v-card>
+    <div class="d-flex align-center ga-2 mb-4" style="max-width: 460px">
+      <v-text-field
+        v-model="newPersonName"
+        label="New person name"
+        density="compact"
+        hide-details
+        @keyup.enter="createPerson"
+      />
+      <v-btn color="primary" variant="tonal" @click="createPerson">Add</v-btn>
+    </div>
+
+    <v-table density="comfortable">
+      <thead>
+        <tr>
+          <th>Identity</th>
+          <th>Source</th>
+          <th>Mapped to</th>
+          <th style="width: 320px">Map</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="i in identities" :key="i.id">
+          <td>{{ i.login }}</td>
+          <td>{{ i.source }}</td>
+          <td>
+            <v-chip v-if="i.personName" color="green" size="x-small" variant="flat">
+              {{ i.personName }}
+            </v-chip>
+            <span v-else class="text-medium-emphasis">unmapped</span>
+          </td>
+          <td>
+            <div class="d-flex align-center ga-2">
+              <v-select
+                v-model="selectedPerson[i.id]"
+                :items="personOptions()"
+                label="Person"
+                density="compact"
+                hide-details
+                style="max-width: 200px"
+              />
+              <v-btn size="x-small" color="primary" variant="tonal" @click="link(i.id)">Link</v-btn>
+              <v-btn v-if="i.personId" size="x-small" variant="text" @click="unlink(i.id)">
+                Unlink
+              </v-btn>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </v-table>
+  </BasePage>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import BasePage from './BasePage.vue'
 import type { Identity, Person } from '../types'
 
 const emit = defineEmits(['changed'])

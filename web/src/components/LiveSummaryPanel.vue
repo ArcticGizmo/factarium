@@ -1,50 +1,45 @@
 <template>
-  <v-card>
-    <template #title>
-      <div class="d-flex align-center ga-2">
-        <span>Live now</span>
-        <v-chip size="x-small" color="green" variant="flat">
-          <v-icon start size="x-small" icon="mdi-circle" />
-          live
-        </v-chip>
-      </div>
-    </template>
-    <template #append>
+  <BasePage title="Overview">
+    <template #actions>
+      <v-chip size="x-small" color="green" variant="flat">
+        <v-icon start size="x-small" icon="mdi-circle" />
+        live
+      </v-chip>
       <span class="text-caption text-medium-emphasis">updated {{ generated }}</span>
     </template>
-    <v-card-text>
-      <div v-if="error" class="text-error mb-2">{{ error }}</div>
 
-      <v-row dense class="mb-2">
-        <v-col v-for="tile in tiles" :key="tile.label" cols="6" sm="4" md="2">
-          <div class="tile">
-            <div class="tile-value">{{ tile.value }}</div>
-            <div class="tile-label">{{ tile.label }}</div>
-          </div>
-        </v-col>
-      </v-row>
+    <div v-if="error" class="text-error mb-2">{{ error }}</div>
 
-      <div v-if="data" class="mt-2">
-        <div class="text-caption text-medium-emphasis mb-1">
-          Issues by status ({{ data.issues.done }}/{{ data.issues.total }} done)
+    <v-row dense class="mb-2">
+      <v-col v-for="tile in tiles" :key="tile.label" cols="6" sm="4" md="2">
+        <div class="tile">
+          <div class="tile-value">{{ tile.value }}</div>
+          <div class="tile-label">{{ tile.label }}</div>
         </div>
-        <v-chip
-          v-for="s in data.issues.byStatus"
-          :key="s.status"
-          :color="statusColors[s.status] || 'grey'"
-          variant="flat"
-          size="small"
-          class="mr-2 mb-1"
-        >
-          {{ s.status }}: {{ s.count }}
-        </v-chip>
+      </v-col>
+    </v-row>
+
+    <div v-if="data" class="mt-2">
+      <div class="text-caption text-medium-emphasis mb-1">
+        Issues by status ({{ data.issues.done }}/{{ data.issues.total }} done)
       </div>
-    </v-card-text>
-  </v-card>
+      <v-chip
+        v-for="s in data.issues.byStatus"
+        :key="s.status"
+        :color="statusColors[s.status] || 'grey'"
+        variant="flat"
+        size="small"
+        class="mr-2 mb-1"
+      >
+        {{ s.status }}: {{ s.count }}
+      </v-chip>
+    </div>
+  </BasePage>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import BasePage from './BasePage.vue'
 import type { LiveSummary } from '../types'
 
 const data = ref<LiveSummary | null>(null)

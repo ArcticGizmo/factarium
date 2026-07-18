@@ -1,45 +1,45 @@
 <template>
-  <v-card title="Claude Code usage (OTEL)">
-    <template #append>
+  <BasePage title="Claude Code" subtitle="Usage via OTEL">
+    <template #actions>
       <v-btn size="small" variant="text" :loading="loading" @click="load">Refresh</v-btn>
     </template>
-    <v-card-text>
-      <div v-if="error" class="text-error mb-2">{{ error }}</div>
 
-      <v-row dense class="mb-2">
-        <v-col v-for="tile in tiles" :key="tile.label" cols="6" sm="4" md="2">
-          <div class="tile">
-            <div class="tile-value">{{ tile.value }}</div>
-            <div class="tile-label">{{ tile.label }}</div>
-          </div>
-        </v-col>
-      </v-row>
+    <div v-if="error" class="text-error mb-2">{{ error }}</div>
 
-      <v-row>
-        <v-col cols="12" md="6">
-          <div class="chart-title">Cost over time (USD/day)</div>
-          <v-chart class="chart" :option="costOption" autoresize />
-        </v-col>
-        <v-col cols="12" md="6">
-          <div class="chart-title">Tokens over time</div>
-          <v-chart class="chart" :option="tokensOption" autoresize />
-        </v-col>
-        <v-col cols="12" md="6">
-          <div class="chart-title">Cost by person (USD)</div>
-          <v-chart class="chart" :option="costByActorOption" autoresize />
-        </v-col>
-        <v-col cols="12" md="6">
-          <div class="chart-title">Lines added over time</div>
-          <v-chart class="chart" :option="linesOption" autoresize />
-        </v-col>
-      </v-row>
-    </v-card-text>
-  </v-card>
+    <v-row dense class="mb-2">
+      <v-col v-for="tile in tiles" :key="tile.label" cols="6" sm="4" md="2">
+        <div class="tile">
+          <div class="tile-value">{{ tile.value }}</div>
+          <div class="tile-label">{{ tile.label }}</div>
+        </div>
+      </v-col>
+    </v-row>
+
+    <v-row>
+      <v-col cols="12" md="6">
+        <div class="chart-title">Cost over time (USD/day)</div>
+        <v-chart class="chart" :option="costOption" autoresize />
+      </v-col>
+      <v-col cols="12" md="6">
+        <div class="chart-title">Tokens over time</div>
+        <v-chart class="chart" :option="tokensOption" autoresize />
+      </v-col>
+      <v-col cols="12" md="6">
+        <div class="chart-title">Cost by person (USD)</div>
+        <v-chart class="chart" :option="costByActorOption" autoresize />
+      </v-col>
+      <v-col cols="12" md="6">
+        <div class="chart-title">Lines added over time</div>
+        <v-chart class="chart" :option="linesOption" autoresize />
+      </v-col>
+    </v-row>
+  </BasePage>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import VChart from 'vue-echarts'
+import BasePage from './BasePage.vue'
 import { lineOption, barOption } from '../charts'
 import type { ClaudeCodeData } from '../types'
 
@@ -59,7 +59,6 @@ async function load() {
   }
 }
 
-defineExpose({ load })
 onMounted(load)
 
 const tiles = computed(() => {

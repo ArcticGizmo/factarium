@@ -1,6 +1,6 @@
 <template>
-  <v-card title="Sources, schedules & pipeline">
-    <template #append>
+  <BasePage title="Sources" subtitle="Schedules & pipeline">
+    <template #actions>
       <v-btn
         v-if="isDev"
         size="small"
@@ -14,186 +14,186 @@
       </v-btn>
       <v-btn size="small" variant="text" @click="load">Refresh</v-btn>
     </template>
-    <v-card-text>
-      <div v-if="error" class="text-error mb-2">{{ error }}</div>
 
-      <!-- Pipeline steps -->
-      <div class="section-title">Pipeline</div>
-      <div class="d-flex align-center flex-wrap ga-2 mb-4">
-        <v-chip v-for="s in steps" :key="s.name" :color="statusColor[s.lastStatus] || 'grey'" variant="flat" size="small">
-          {{ s.name }} · {{ s.lastStatus }} · {{ s.lastItemsProcessed }} @ {{ fmt(s.lastRunAt) }}
-        </v-chip>
-        <v-btn size="small" color="primary" variant="tonal" :loading="busy" @click="runPipeline">
-          Run pipeline now
-        </v-btn>
-      </div>
+    <div v-if="error" class="text-error mb-2">{{ error }}</div>
 
-      <!-- Integrations -->
-      <div class="d-flex align-center justify-space-between">
-        <div class="section-title">Sources</div>
-        <v-btn size="small" variant="text" @click="form.show = !form.show">
-          {{ form.show ? 'Cancel' : '+ Add source' }}
-        </v-btn>
-      </div>
+    <!-- Pipeline steps -->
+    <div class="section-title">Pipeline</div>
+    <div class="d-flex align-center flex-wrap ga-2 mb-4">
+      <v-chip v-for="s in steps" :key="s.name" :color="statusColor[s.lastStatus] || 'grey'" variant="flat" size="small">
+        {{ s.name }} · {{ s.lastStatus }} · {{ s.lastItemsProcessed }} @ {{ fmt(s.lastRunAt) }}
+      </v-chip>
+      <v-btn size="small" color="primary" variant="tonal" :loading="busy" @click="runPipeline">
+        Run pipeline now
+      </v-btn>
+    </div>
 
-      <v-expand-transition>
-        <div v-if="form.show" class="add-form mb-3">
-          <div class="text-body-2 text-medium-emphasis mb-3">
-            Connect a source. Factarium replicates its data on the schedule below (or on demand),
-            then transforms and aggregates it into the dashboards. Your token is encrypted before it is stored.
-          </div>
+    <!-- Integrations -->
+    <div class="d-flex align-center justify-space-between">
+      <div class="section-title">Sources</div>
+      <v-btn size="small" variant="text" @click="form.show = !form.show">
+        {{ form.show ? 'Cancel' : '+ Add source' }}
+      </v-btn>
+    </div>
 
-          <v-row dense>
-            <v-col cols="12" sm="4">
-              <v-select
-                v-model="form.type"
-                :items="typeOptions"
-                label="Source type"
-                density="compact"
-                persistent-hint
-                hint="What you're connecting to"
-              />
-            </v-col>
-            <v-col cols="12" sm="4">
-              <v-text-field
-                v-model="form.name"
-                label="Display name"
-                :placeholder="form.type === 'github' ? 'Acme GitHub' : 'Acme Jira'"
-                density="compact"
-                persistent-hint
-                hint="A friendly label shown in this list"
-              />
-            </v-col>
-            <v-col cols="12" sm="4">
-              <v-text-field
-                v-model="form.cron"
-                label="Schedule (cron, optional)"
-                placeholder="0 0/30 * * * ?"
-                density="compact"
-                persistent-hint
-                hint="Blank = manual only · e.g. 0 0/30 * * * ? = every 30 min"
-              />
-            </v-col>
-          </v-row>
-
-          <v-row v-if="form.type === 'github'" dense>
-            <v-col cols="12" sm="6">
-              <v-text-field
-                v-model="form.org"
-                label="Organization or user"
-                placeholder="acme-inc"
-                density="compact"
-                persistent-hint
-                hint="Syncs every repo in this GitHub org/user"
-              />
-            </v-col>
-            <v-col cols="12" sm="6">
-              <v-text-field
-                v-model="form.repos"
-                label="Specific repos (optional)"
-                placeholder="acme-inc/api, acme-inc/web"
-                density="compact"
-                persistent-hint
-                hint="owner/name, comma-separated — instead of, or in addition to, an org"
-              />
-            </v-col>
-          </v-row>
-
-          <v-row v-else dense>
-            <v-col cols="12" sm="4">
-              <v-text-field
-                v-model="form.baseUrl"
-                label="Jira site URL"
-                placeholder="https://acme.atlassian.net"
-                density="compact"
-                persistent-hint
-                hint="Your Atlassian Cloud site"
-              />
-            </v-col>
-            <v-col cols="12" sm="4">
-              <v-text-field
-                v-model="form.email"
-                label="Account email"
-                placeholder="you@acme.com"
-                density="compact"
-                persistent-hint
-                hint="Atlassian login email (paired with the token to authenticate)"
-              />
-            </v-col>
-            <v-col cols="12" sm="4">
-              <v-text-field
-                v-model="form.projectKeys"
-                label="Project keys (optional)"
-                placeholder="QAI, OPS"
-                density="compact"
-                persistent-hint
-                hint="Limit to these projects · blank = everything you can see"
-              />
-            </v-col>
-          </v-row>
-
-          <v-row dense align="start">
-            <v-col cols="12" sm="8">
-              <v-text-field
-                v-model="form.credential"
-                :label="form.type === 'github' ? 'GitHub personal access token' : 'Jira API token'"
-                :placeholder="form.type === 'github' ? 'ghp_…' : 'ATATT…'"
-                type="password"
-                density="compact"
-                persistent-hint
-                :hint="credentialHint"
-              />
-            </v-col>
-            <v-col cols="12" sm="4" class="d-flex align-center pt-2">
-              <v-btn color="primary" variant="tonal" :disabled="!form.name" @click="createIntegration">
-                Create source
-              </v-btn>
-            </v-col>
-          </v-row>
+    <v-expand-transition>
+      <div v-if="form.show" class="add-form mb-3">
+        <div class="text-body-2 text-medium-emphasis mb-3">
+          Connect a source. Factarium replicates its data on the schedule below (or on demand),
+          then transforms and aggregates it into the dashboards. Your token is encrypted before it is stored.
         </div>
-      </v-expand-transition>
 
-      <v-table density="comfortable">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Enabled</th>
-            <th style="width: 200px">Schedule (cron)</th>
-            <th>Last run</th>
-            <th>Next run</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="i in integrations" :key="i.id">
-            <td>{{ i.name }}</td>
-            <td>{{ i.type }}</td>
-            <td><v-switch v-model="i.enabled" density="compact" hide-details color="primary" /></td>
-            <td>
-              <v-text-field v-model="i.scheduleCron" density="compact" hide-details placeholder="manual" style="max-width: 190px" />
-            </td>
-            <td>
-              <v-chip :color="statusColor[i.lastRunStatus] || 'grey'" size="x-small" variant="flat">{{ i.lastRunStatus }}</v-chip>
-              <div v-if="i.lastRunError" class="text-caption text-error">{{ i.lastRunError }}</div>
-            </td>
-            <td class="text-caption">{{ fmt(i.nextRunAt) }}</td>
-            <td>
-              <div class="d-flex ga-1">
-                <v-btn size="x-small" variant="tonal" color="primary" @click="save(i)">Save</v-btn>
-                <v-btn size="x-small" variant="text" @click="syncNow(i.id)">Sync</v-btn>
-                <v-btn size="x-small" variant="text" color="red" @click="remove(i.id)">Delete</v-btn>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </v-table>
-    </v-card-text>
-  </v-card>
+        <v-row dense>
+          <v-col cols="12" sm="4">
+            <v-select
+              v-model="form.type"
+              :items="typeOptions"
+              label="Source type"
+              density="compact"
+              persistent-hint
+              hint="What you're connecting to"
+            />
+          </v-col>
+          <v-col cols="12" sm="4">
+            <v-text-field
+              v-model="form.name"
+              label="Display name"
+              :placeholder="form.type === 'github' ? 'Acme GitHub' : 'Acme Jira'"
+              density="compact"
+              persistent-hint
+              hint="A friendly label shown in this list"
+            />
+          </v-col>
+          <v-col cols="12" sm="4">
+            <v-text-field
+              v-model="form.cron"
+              label="Schedule (cron, optional)"
+              placeholder="0 0/30 * * * ?"
+              density="compact"
+              persistent-hint
+              hint="Blank = manual only · e.g. 0 0/30 * * * ? = every 30 min"
+            />
+          </v-col>
+        </v-row>
+
+        <v-row v-if="form.type === 'github'" dense>
+          <v-col cols="12" sm="6">
+            <v-text-field
+              v-model="form.org"
+              label="Organization or user"
+              placeholder="acme-inc"
+              density="compact"
+              persistent-hint
+              hint="Syncs every repo in this GitHub org/user"
+            />
+          </v-col>
+          <v-col cols="12" sm="6">
+            <v-text-field
+              v-model="form.repos"
+              label="Specific repos (optional)"
+              placeholder="acme-inc/api, acme-inc/web"
+              density="compact"
+              persistent-hint
+              hint="owner/name, comma-separated — instead of, or in addition to, an org"
+            />
+          </v-col>
+        </v-row>
+
+        <v-row v-else dense>
+          <v-col cols="12" sm="4">
+            <v-text-field
+              v-model="form.baseUrl"
+              label="Jira site URL"
+              placeholder="https://acme.atlassian.net"
+              density="compact"
+              persistent-hint
+              hint="Your Atlassian Cloud site"
+            />
+          </v-col>
+          <v-col cols="12" sm="4">
+            <v-text-field
+              v-model="form.email"
+              label="Account email"
+              placeholder="you@acme.com"
+              density="compact"
+              persistent-hint
+              hint="Atlassian login email (paired with the token to authenticate)"
+            />
+          </v-col>
+          <v-col cols="12" sm="4">
+            <v-text-field
+              v-model="form.projectKeys"
+              label="Project keys (optional)"
+              placeholder="QAI, OPS"
+              density="compact"
+              persistent-hint
+              hint="Limit to these projects · blank = everything you can see"
+            />
+          </v-col>
+        </v-row>
+
+        <v-row dense align="start">
+          <v-col cols="12" sm="8">
+            <v-text-field
+              v-model="form.credential"
+              :label="form.type === 'github' ? 'GitHub personal access token' : 'Jira API token'"
+              :placeholder="form.type === 'github' ? 'ghp_…' : 'ATATT…'"
+              type="password"
+              density="compact"
+              persistent-hint
+              :hint="credentialHint"
+            />
+          </v-col>
+          <v-col cols="12" sm="4" class="d-flex align-center pt-2">
+            <v-btn color="primary" variant="tonal" :disabled="!form.name" @click="createIntegration">
+              Create source
+            </v-btn>
+          </v-col>
+        </v-row>
+      </div>
+    </v-expand-transition>
+
+    <v-table density="comfortable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Enabled</th>
+          <th style="width: 200px">Schedule (cron)</th>
+          <th>Last run</th>
+          <th>Next run</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="i in integrations" :key="i.id">
+          <td>{{ i.name }}</td>
+          <td>{{ i.type }}</td>
+          <td><v-switch v-model="i.enabled" density="compact" hide-details color="primary" /></td>
+          <td>
+            <v-text-field v-model="i.scheduleCron" density="compact" hide-details placeholder="manual" style="max-width: 190px" />
+          </td>
+          <td>
+            <v-chip :color="statusColor[i.lastRunStatus] || 'grey'" size="x-small" variant="flat">{{ i.lastRunStatus }}</v-chip>
+            <div v-if="i.lastRunError" class="text-caption text-error">{{ i.lastRunError }}</div>
+          </td>
+          <td class="text-caption">{{ fmt(i.nextRunAt) }}</td>
+          <td>
+            <div class="d-flex ga-1">
+              <v-btn size="x-small" variant="tonal" color="primary" @click="save(i)">Save</v-btn>
+              <v-btn size="x-small" variant="text" @click="syncNow(i.id)">Sync</v-btn>
+              <v-btn size="x-small" variant="text" color="red" @click="remove(i.id)">Delete</v-btn>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </v-table>
+  </BasePage>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
+import BasePage from './BasePage.vue'
 import type { Integration, PipelineStep } from '../types'
 
 const emit = defineEmits(['changed'])
