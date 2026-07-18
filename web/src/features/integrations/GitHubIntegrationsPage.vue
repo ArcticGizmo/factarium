@@ -1,142 +1,110 @@
 <template>
   <BasePage title="GitHub" subtitle="Repositories, pull requests, reviews & commits">
     <template #actions>
+      <v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-plus" @click="openCreate">
+        Add GitHub connection
+      </v-btn>
       <v-btn size="small" variant="text" @click="load">Refresh</v-btn>
     </template>
 
     <div v-if="error" class="text-error mb-2">{{ error }}</div>
 
-    <div class="d-flex align-center justify-space-between">
-      <div class="section-title">Connections</div>
-      <v-btn size="small" variant="text" @click="form.show = !form.show">
-        {{ form.show ? 'Cancel' : '+ Add GitHub connection' }}
-      </v-btn>
+    <div class="text-body-2 text-medium-emphasis mb-3">
+      Each row is a single repository, managed on its own. Add several at once and they fan out to a row each.
     </div>
 
-    <v-expand-transition>
-      <div v-if="form.show" class="add-form mb-3">
-        <div class="text-body-2 text-medium-emphasis mb-3">
-          Connect a GitHub org and/or specific repos. Factarium replicates repositories, pull requests, reviews and
-          commits on the schedule below (or on demand). Your token is encrypted before it is stored.
-        </div>
+    <v-table density="comfortable">
+      <thead>
+        <tr>
+          <th>Repository</th>
+          <th>Enabled</th>
+          <th>Schedule</th>
+          <th>Last run</th>
+          <th>Next run</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-if="integrations.length === 0">
+          <td colspan="6" class="text-medium-emphasis text-caption py-4">No repositories connected yet.</td>
+        </tr>
+        <tr v-for="i in integrations" :key="i.id">
+          <td>{{ repoLabel(i) }}</td>
+          <td>
+            <v-chip :color="i.enabled ? 'green' : 'grey'" size="x-small" variant="flat">
+              {{ i.enabled ? 'on' : 'off' }}
+            </v-chip>
+          </td>
+          <td class="text-caption">{{ i.scheduleCron || 'manual' }}</td>
+          <td>
+            <v-chip :color="statusColor[i.lastRunStatus] || 'grey'" size="x-small" variant="flat">{{
+              i.lastRunStatus
+            }}</v-chip>
+            <div v-if="i.lastRunError" class="text-caption text-error">{{ i.lastRunError }}</div>
+          </td>
+          <td class="text-caption">{{ fmt(i.nextRunAt) }}</td>
+          <td>
+            <div class="d-flex ga-1">
+              <v-btn size="x-small" variant="tonal" color="primary" @click="openEdit(i)">Edit</v-btn>
+              <v-btn size="x-small" variant="text" @click="syncNow(i.id)">Sync</v-btn>
+              <v-btn size="x-small" variant="text" color="red" @click="remove(i.id)">Delete</v-btn>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </v-table>
 
-        <v-row dense>
-          <v-col cols="12" sm="6">
-            <v-text-field
-              v-model="form.name"
-              label="Display name"
-              placeholder="Acme GitHub"
-              density="compact"
-              persistent-hint
-              hint="A friendly label shown in this list"
-            />
-          </v-col>
-          <v-col cols="12" sm="6">
-            <v-text-field
-              v-model="form.cron"
-              label="Schedule (cron, optional)"
-              placeholder="0 0/30 * * * ?"
-              density="compact"
-              persistent-hint
-              hint="Blank = manual only · e.g. 0 0/30 * * * ? = every 30 min"
-            />
-          </v-col>
-        </v-row>
-
-        <v-row dense>
-          <v-col cols="12" sm="6">
-            <v-text-field
-              v-model="form.org"
-              label="Organization or user"
-              placeholder="acme-inc"
-              density="compact"
-              persistent-hint
-              hint="Syncs every repo in this GitHub org/user"
-            />
-          </v-col>
-          <v-col cols="12" sm="6">
-            <v-text-field
-              v-model="form.repos"
-              label="Specific repos (optional)"
-              placeholder="acme-inc/api, acme-inc/web"
-              density="compact"
-              persistent-hint
-              hint="owner/name, comma-separated — instead of, or in addition to, an org"
-            />
-          </v-col>
-        </v-row>
-
-        <v-row dense align="start">
-          <v-col cols="12" sm="8">
-            <v-text-field
-              v-model="form.credential"
-              label="GitHub personal access token"
-              placeholder="ghp_…"
-              type="password"
-              density="compact"
-              persistent-hint
-              hint="GitHub → Settings → Developer settings → Personal access tokens (repo read scope). Stored encrypted."
-            />
-          </v-col>
-          <v-col cols="12" sm="4" class="d-flex align-center pt-2">
-            <v-btn color="primary" variant="tonal" :disabled="!form.name" @click="create">
-              Create connection
-            </v-btn>
-          </v-col>
-        </v-row>
-      </div>
-    </v-expand-transition>
-
-    <IntegrationsTable :integrations="integrations" @refresh="load" />
+    <GitHubIntegrationDialog v-model="dialog" :integration="editing" @saved="load" />
   </BasePage>
 </template>
 
 <script setup lang="ts">
-import { reactive, onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import BasePage from '../../components/BasePage.vue';
-import IntegrationsTable from './IntegrationsTable.vue';
-import { useIntegrations, splitCsv } from './useIntegrations';
+import GitHubIntegrationDialog from './GitHubIntegrationDialog.vue';
+import type { Integration, GitHubConfig } from '../../types';
+import { useIntegrations } from './useIntegrations';
 
 const { integrations, error, load } = useIntegrations('github');
 
-const form = reactive({
-  show: false,
-  name: '',
-  cron: '',
-  org: '',
-  repos: '',
-  credential: ''
-});
+const dialog = ref(false);
+const editing = ref<Integration | null>(null);
 
-async function create() {
-  await fetch('/api/integrations/github', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name: form.name,
-      cron: form.cron || null,
-      enabled: !!form.cron,
-      org: form.org || null,
-      repos: splitCsv(form.repos),
-      credential: form.credential || null
-    })
-  });
-  Object.assign(form, { show: false, name: '', cron: '', org: '', repos: '', credential: '' });
+function openCreate() {
+  editing.value = null;
+  dialog.value = true;
+}
+
+function openEdit(i: Integration) {
+  editing.value = i;
+  dialog.value = true;
+}
+
+async function syncNow(id: string) {
+  await fetch(`/api/integrations/${id}/sync`, { method: 'POST' });
+  setTimeout(load, 1500);
+}
+
+async function remove(id: string) {
+  await fetch(`/api/integrations/${id}`, { method: 'DELETE' });
   await load();
 }
 
+function repoLabel(i: Integration): string {
+  const config = i.config as GitHubConfig | null;
+  return config?.repos?.[0] ?? config?.org ?? i.name;
+}
+
+function fmt(ts: string | null | undefined) {
+  return ts ? new Date(ts).toLocaleString() : '—';
+}
+
+const statusColor: Record<string, string> = {
+  Success: 'green',
+  Failed: 'red',
+  Running: 'blue',
+  Never: 'grey'
+};
+
 onMounted(load);
 </script>
-
-<style scoped>
-.section-title {
-  font-size: 0.9rem;
-  font-weight: 600;
-  margin: 4px 0 8px;
-}
-.add-form {
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-}
-</style>

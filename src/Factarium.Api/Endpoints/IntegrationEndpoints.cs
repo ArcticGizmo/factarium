@@ -28,6 +28,14 @@ public sealed record CreateClaudeIntegrationRequest(
     string Name,
     bool Enabled);
 
+public sealed record UpdateGitHubIntegrationRequest(
+    string Name,
+    string? Cron,
+    bool Enabled,
+    string? Org,
+    List<string>? Repos,
+    string? Credential);
+
 /// <summary>Update the fields common to every integration (schedule, enablement, credential).</summary>
 public sealed record UpdateIntegrationRequest(
     bool Enabled,
@@ -85,6 +93,47 @@ public static class IntegrationEndpoints
                     Repos = Clean(request.Repos),
                 },
                 request.Credential, db, protector, scheduler, clock, ct));
+
+        group.MapPut("github/{id:guid}", async (
+            Guid id,
+            UpdateGitHubIntegrationRequest request,
+            FactariumDbContext db,
+            ICredentialProtector protector,
+            IIntegrationScheduler scheduler,
+            CancellationToken ct) =>
+        {
+            var integration = await db.Integrations.FindAsync([id], ct);
+            if (integration is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (integration is not GitHubIntegration gh)
+            {
+                return Results.BadRequest("Integration is not a GitHub connection.");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                return Results.BadRequest("Name is required.");
+            }
+
+            gh.Name = request.Name;
+            gh.Enabled = request.Enabled;
+            gh.ScheduleCron = Blank(request.Cron);
+            gh.Org = Blank(request.Org);
+            gh.Repos = Clean(request.Repos);
+            if (!string.IsNullOrWhiteSpace(request.Credential))
+            {
+                gh.EncryptedCredential = protector.Protect(request.Credential);
+            }
+
+            await db.SaveChangesAsync(ct);
+
+            // Reschedules or unschedules based on the new enabled/cron state.
+            await scheduler.ScheduleAsync(gh, ct);
+            return Results.NoContent();
+        });
 
         group.MapPost("jira", (
             CreateJiraIntegrationRequest request,
