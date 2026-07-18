@@ -147,6 +147,13 @@ export interface RawRecordView {
   payload: unknown;
 }
 
+export interface RecordsPageResult {
+  total: number;
+  page: number;
+  pageSize: number;
+  records: RawRecordView[];
+}
+
 export interface PipelineStep {
   name: string;
   lastStatus: string;

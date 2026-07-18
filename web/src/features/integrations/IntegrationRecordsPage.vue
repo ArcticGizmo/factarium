@@ -8,8 +8,8 @@
     <div v-if="error" class="text-error mb-2">{{ error }}</div>
 
     <div class="text-body-2 text-medium-emphasis mb-3">
-      Everything Factarium has replicated for this connection, exactly as held in the bronze tier — the raw source
-      payload plus provenance. Read-only.
+      Everything Factarium has replicated for this connection, held in the bronze tier. Basic fields are extracted into
+      columns; open any row to see the raw source payload.
     </div>
 
     <div v-if="summary && summary.entityTypes.length === 0" class="text-medium-emphasis">
@@ -23,30 +23,131 @@
         </v-tab>
       </v-tabs>
 
-      <div v-if="loadingRecords" class="text-medium-emphasis text-caption py-2">Loading…</div>
-
-      <v-expansion-panels v-else multiple variant="accordion">
-        <v-expansion-panel v-for="r in records" :key="r.id">
-          <v-expansion-panel-title>
-            <div class="d-flex align-center flex-wrap ga-3">
-              <span class="font-weight-medium">{{ r.sourceId }}</span>
-              <span class="text-caption text-medium-emphasis">updated {{ fmt(r.sourceUpdatedAt) }}</span>
-              <v-chip v-if="r.version > 1" size="x-small" variant="tonal">v{{ r.version }}</v-chip>
-            </div>
-          </v-expansion-panel-title>
-          <v-expansion-panel-text>
-            <div class="text-caption text-medium-emphasis mb-2">
-              first seen {{ fmt(r.firstSeenAt) }} · fetched {{ fmt(r.fetchedAt) }}
-            </div>
-            <pre class="payload">{{ pretty(r.payload) }}</pre>
-          </v-expansion-panel-text>
-        </v-expansion-panel>
-      </v-expansion-panels>
-
-      <div v-if="!loadingRecords && records.length === 0" class="text-medium-emphasis text-caption py-2">
-        No records for this entity.
+      <!-- Filters -->
+      <div class="d-flex align-center flex-wrap ga-3 mb-3">
+        <v-text-field
+          v-model="fromDate"
+          label="From"
+          type="date"
+          density="compact"
+          hide-details
+          style="max-width: 180px"
+        />
+        <v-text-field
+          v-model="toDate"
+          label="To"
+          type="date"
+          density="compact"
+          hide-details
+          style="max-width: 180px"
+        />
+        <v-btn v-if="fromDate || toDate" size="small" variant="text" @click="clearDates">Clear dates</v-btn>
+        <v-spacer />
+        <v-select
+          v-model="pageSize"
+          :items="[25, 50, 100]"
+          label="Per page"
+          density="compact"
+          hide-details
+          style="max-width: 120px"
+        />
       </div>
+
+      <div v-if="loading" class="text-medium-emphasis text-caption py-2">Loading…</div>
+
+      <template v-else>
+        <!-- Commit-specific extracted columns -->
+        <v-table v-if="selectedType === 'commit'" density="comfortable">
+          <thead>
+            <tr>
+              <th style="width: 170px">Timestamp</th>
+              <th style="width: 90px">Commit</th>
+              <th>Message</th>
+              <th style="width: 200px">Author(s)</th>
+              <th style="width: 110px">Comments</th>
+              <th style="width: 70px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="records.length === 0">
+              <td colspan="6" class="text-medium-emphasis text-caption py-4">No commits in this range.</td>
+            </tr>
+            <tr v-for="r in records" :key="r.id">
+              <td class="text-caption">{{ fmt(r.sourceUpdatedAt) }}</td>
+              <td>
+                <code>{{ commit(r).shortHash }}</code>
+              </td>
+              <td>{{ commit(r).message }}</td>
+              <td class="text-caption">{{ commit(r).authors.join(', ') || '—' }}</td>
+              <td>
+                <a v-if="commit(r).link" :href="commit(r).link!" target="_blank" rel="noopener">
+                  {{ commit(r).commentCount }} <span aria-hidden="true">↗</span>
+                </a>
+                <span v-else class="text-medium-emphasis">—</span>
+              </td>
+              <td>
+                <v-btn size="x-small" variant="text" @click="openRaw(r)">Raw</v-btn>
+              </td>
+            </tr>
+          </tbody>
+        </v-table>
+
+        <!-- Generic view for other entity types -->
+        <v-table v-else density="comfortable">
+          <thead>
+            <tr>
+              <th>Source id</th>
+              <th style="width: 200px">Updated</th>
+              <th style="width: 90px">Version</th>
+              <th style="width: 70px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="records.length === 0">
+              <td colspan="4" class="text-medium-emphasis text-caption py-4">No records in this range.</td>
+            </tr>
+            <tr v-for="r in records" :key="r.id">
+              <td>{{ r.sourceId }}</td>
+              <td class="text-caption">{{ fmt(r.sourceUpdatedAt) }}</td>
+              <td>{{ r.version }}</td>
+              <td>
+                <v-btn size="x-small" variant="text" @click="openRaw(r)">Raw</v-btn>
+              </td>
+            </tr>
+          </tbody>
+        </v-table>
+
+        <div class="d-flex align-center justify-space-between mt-3">
+          <span class="text-caption text-medium-emphasis">{{ total }} total</span>
+          <v-pagination
+            v-if="pageCount > 1"
+            :model-value="page"
+            :length="pageCount"
+            :total-visible="7"
+            density="comfortable"
+            @update:model-value="goToPage"
+          />
+        </div>
+      </template>
     </template>
+
+    <!-- Raw payload modal -->
+    <v-dialog v-model="rawOpen" max-width="760">
+      <v-card>
+        <v-card-title class="d-flex align-center">
+          <span>Raw record</span>
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" size="small" @click="rawOpen = false" />
+        </v-card-title>
+        <v-card-text>
+          <div v-if="rawRecord" class="text-caption text-medium-emphasis mb-2">
+            {{ rawRecord.entityType }} · {{ rawRecord.sourceId }} · v{{ rawRecord.version }} · fetched
+            {{ fmt(rawRecord.fetchedAt) }}
+          </div>
+          <pre class="payload">{{ rawRecord ? pretty(rawRecord.payload) : '' }}</pre>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
   </BasePage>
 </template>
 
@@ -54,20 +155,28 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import BasePage from '../../components/BasePage.vue';
-import type { RecordsSummary, RawRecordView } from '../../types';
+import type { RecordsSummary, RawRecordView, RecordsPageResult } from '../../types';
 
 const route = useRoute();
 const id = computed(() => String(route.params.id));
 
 const summary = ref<RecordsSummary | null>(null);
 const records = ref<RawRecordView[]>([]);
+const total = ref(0);
+const page = ref(1);
+const pageSize = ref(25);
 const selectedType = ref<string | null>(null);
+const fromDate = ref('');
+const toDate = ref('');
 const error = ref<string | null>(null);
-const loadingRecords = ref(false);
+const loading = ref(false);
+
+const rawOpen = ref(false);
+const rawRecord = ref<RawRecordView | null>(null);
 
 const title = computed(() => (summary.value ? `${summary.value.name} — records` : 'Records'));
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 
-// Route back to the connection's own page based on its type.
 const backTo = computed(() => {
   switch (summary.value?.type) {
     case 'github':
@@ -98,16 +207,29 @@ async function loadSummary() {
 async function loadRecords() {
   if (!selectedType.value) {
     records.value = [];
+    total.value = 0;
     return;
   }
-  loadingRecords.value = true;
+  loading.value = true;
   try {
-    const params = new URLSearchParams({ entityType: selectedType.value, limit: '200' });
-    records.value = await fetch(`/api/integrations/${id.value}/records?${params}`).then((r) => r.json());
+    const params = new URLSearchParams({
+      entityType: selectedType.value,
+      page: String(page.value),
+      pageSize: String(pageSize.value)
+    });
+    if (fromDate.value) params.set('from', new Date(`${fromDate.value}T00:00:00`).toISOString());
+    if (toDate.value) params.set('to', new Date(`${toDate.value}T23:59:59.999`).toISOString());
+
+    const result: RecordsPageResult = await fetch(
+      `/api/integrations/${id.value}/records?${params}`
+    ).then((r) => r.json());
+    records.value = result.records;
+    total.value = result.total;
+    error.value = null;
   } catch (e) {
     error.value = String(e);
   } finally {
-    loadingRecords.value = false;
+    loading.value = false;
   }
 }
 
@@ -116,7 +238,63 @@ async function reload() {
   await loadRecords();
 }
 
-watch(selectedType, loadRecords);
+function goToPage(p: number) {
+  page.value = p;
+  loadRecords();
+}
+
+function clearDates() {
+  fromDate.value = '';
+  toDate.value = '';
+}
+
+// Any tab / filter / page-size change resets to page 1 and reloads.
+watch([selectedType, fromDate, toDate, pageSize], () => {
+  page.value = 1;
+  loadRecords();
+});
+
+function openRaw(r: RawRecordView) {
+  rawRecord.value = r;
+  rawOpen.value = true;
+}
+
+// --- commit column extraction ---
+interface CommitRow {
+  shortHash: string;
+  message: string;
+  authors: string[];
+  link: string | null;
+  commentCount: number;
+}
+
+function commit(r: RawRecordView): CommitRow {
+  const p = (r.payload ?? {}) as Record<string, any>;
+  const sha: string = p.sha ?? r.sourceId ?? '';
+  const message: string = String(p.commit?.message ?? '').split('\n')[0];
+  return {
+    shortHash: sha.slice(0, 7),
+    message,
+    authors: extractAuthors(p),
+    link: p.html_url ?? null,
+    commentCount: p.commit?.comment_count ?? 0
+  };
+}
+
+function extractAuthors(p: Record<string, any>): string[] {
+  const names: string[] = [];
+  const primary = p.commit?.author?.name ?? p.author?.login;
+  if (primary) names.push(String(primary));
+  // Co-authored-by trailers in the commit message.
+  const message = String(p.commit?.message ?? '');
+  const re = /Co-authored-by:\s*([^<\n]+?)\s*(?:<[^>]*>)?\s*$/gim;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(message)) !== null) {
+    const name = m[1].trim();
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return names;
+}
 
 function fmt(ts: string | null | undefined) {
   return ts ? new Date(ts).toLocaleString() : '—';
@@ -139,5 +317,6 @@ onMounted(loadSummary);
   line-height: 1.4;
   overflow-x: auto;
   white-space: pre;
+  max-height: 60vh;
 }
 </style>

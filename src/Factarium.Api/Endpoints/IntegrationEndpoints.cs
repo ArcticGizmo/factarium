@@ -219,23 +219,46 @@ public static class IntegrationEndpoints
         });
 
         group.MapGet("{id:guid}/records", async (
-            Guid id, string? entityType, int? limit, FactariumDbContext db, CancellationToken ct) =>
+            Guid id,
+            string? entityType,
+            DateTimeOffset? from,
+            DateTimeOffset? to,
+            int? page,
+            int? pageSize,
+            FactariumDbContext db,
+            CancellationToken ct) =>
         {
             if (!await db.Integrations.AnyAsync(i => i.Id == id, ct))
             {
                 return Results.NotFound();
             }
 
-            var take = Math.Clamp(limit ?? 100, 1, 500);
+            var size = Math.Clamp(pageSize ?? 25, 1, 200);
+            var pageNumber = Math.Max(page ?? 1, 1);
+
             var query = db.RawRecords.Where(r => r.IntegrationId == id);
             if (!string.IsNullOrWhiteSpace(entityType))
             {
                 query = query.Where(r => r.EntityType == entityType);
             }
 
+            // Date range filters the source-reported timestamp (e.g. a commit's date).
+            if (from is not null)
+            {
+                query = query.Where(r => r.SourceUpdatedAt >= from);
+            }
+
+            if (to is not null)
+            {
+                query = query.Where(r => r.SourceUpdatedAt <= to);
+            }
+
+            var total = await query.CountAsync(ct);
+
             var records = await query
                 .OrderByDescending(r => r.SourceUpdatedAt ?? r.FetchedAt)
-                .Take(take)
+                .Skip((pageNumber - 1) * size)
+                .Take(size)
                 .Select(r => new
                 {
                     r.Id,
@@ -262,7 +285,7 @@ public static class IntegrationEndpoints
                 Payload = JsonSerializer.Deserialize<JsonElement>(r.Payload),
             });
 
-            return Results.Ok(result);
+            return Results.Ok(new { Total = total, Page = pageNumber, PageSize = size, Records = result });
         });
 
         group.MapPost("{id:guid}/sync", async (
