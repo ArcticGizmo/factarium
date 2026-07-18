@@ -20,6 +20,6 @@ RUN dotnet publish src/Factarium.Api/Factarium.Api.csproj -c Release -o /app
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 COPY --from=build /app ./
-ENV ASPNETCORE_URLS=http://+:8080
-EXPOSE 8080
+ENV ASPNETCORE_URLS=http://+:4600
+EXPOSE 4600
 ENTRYPOINT ["dotnet", "Factarium.Api.dll"]

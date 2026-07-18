@@ -2,7 +2,7 @@ name: factarium
 
 # Dev-mode ship target: `docker compose -f deploy/docker-compose.yml up`.
 #   - postgres : the single datastore
-#   - api      : .NET host, serves the built SPA at http://localhost:8080
+#   - api      : .NET host, serves the built SPA at http://localhost:4600
 #   - web      : Vite dev server with hot reload at http://localhost:5173 (proxies /api -> api)
 # The single-exe ship target bundles the same SPA + API into one self-contained binary.
 services:
@@ -28,20 +28,20 @@ services:
       dockerfile: deploy/Dockerfile
     environment:
       ConnectionStrings__Factarium: "Host=postgres;Port=5432;Database=factarium;Username=factarium;Password=factarium"
-      ASPNETCORE_URLS: "http://+:8080"
+      ASPNETCORE_URLS: "http://+:4600"
       ASPNETCORE_ENVIRONMENT: "Production"
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "4600:4600"
 
   web:
     image: node:22
     working_dir: /app
     command: sh -c "npm install && npm run dev -- --host"
     environment:
-      VITE_API_PROXY: "http://api:8080"
+      VITE_API_PROXY: "http://api:4600"
     volumes:
       - ../web:/app
       - /app/node_modules

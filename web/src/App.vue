@@ -1,31 +1,13 @@
 <script setup>
-import { ref, shallowRef, onMounted } from 'vue'
-import LiveSummaryPanel from './components/LiveSummaryPanel.vue'
-import RepoActivityDashboard from './components/RepoActivityDashboard.vue'
-import DeliveryDashboard from './components/DeliveryDashboard.vue'
-import ClaudeCodeDashboard from './components/ClaudeCodeDashboard.vue'
-import IdentityMappingPanel from './components/IdentityMappingPanel.vue'
-import SchedulesPanel from './components/SchedulesPanel.vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { routes } from './router'
 
-// First-round information architecture: one page per distinct reason to be here.
-// Overview is the live pulse; the middle three are the "what happened" dashboards;
-// People and Sources are the "how the data gets here / who it belongs to" admin pages.
-const navItems = [
-  { key: 'overview', title: 'Overview', icon: 'mdi-pulse', component: LiveSummaryPanel },
-  { key: 'repositories', title: 'Repositories', icon: 'mdi-source-branch', component: RepoActivityDashboard },
-  { key: 'delivery', title: 'Delivery', icon: 'mdi-rocket-launch-outline', component: DeliveryDashboard },
-  { key: 'claude-code', title: 'Claude Code', icon: 'mdi-robot-outline', component: ClaudeCodeDashboard },
-  { key: 'people', title: 'People', icon: 'mdi-account-group-outline', component: IdentityMappingPanel },
-  { key: 'sources', title: 'Sources', icon: 'mdi-sync', component: SchedulesPanel },
-]
+// Nav is derived from the route table: every route with meta.nav shows up here.
+const navItems = routes.filter((r) => r.meta?.nav)
 
-const current = ref(navItems[0])
-const currentComponent = shallowRef(navItems[0].component)
-
-function select(item) {
-  current.value = item
-  currentComponent.value = item.component
-}
+const route = useRoute()
+const currentTitle = computed(() => route.meta?.title ?? 'Factarium')
 
 const health = ref(null)
 const me = ref(null)
@@ -60,17 +42,16 @@ onMounted(load)
       <v-list nav density="comfortable">
         <v-list-item
           v-for="item in navItems"
-          :key="item.key"
-          :active="current.key === item.key"
-          :prepend-icon="item.icon"
-          :title="item.title"
-          @click="select(item)"
+          :key="item.path"
+          :to="item.path"
+          :prepend-icon="item.meta.icon"
+          :title="item.meta.title"
         />
       </v-list>
     </v-navigation-drawer>
 
     <v-app-bar color="surface" flat>
-      <v-app-bar-title>{{ current.title }}</v-app-bar-title>
+      <v-app-bar-title>{{ currentTitle }}</v-app-bar-title>
       <template #append>
         <span v-if="me" class="text-caption text-medium-emphasis mr-4">
           {{ me.displayName }}
@@ -89,7 +70,7 @@ onMounted(load)
     <v-main>
       <v-container>
         <div v-if="error" class="text-error mb-2">API error: {{ error }}</div>
-        <component :is="currentComponent" />
+        <router-view />
       </v-container>
     </v-main>
   </v-app>

@@ -18,7 +18,7 @@ on a single Postgres. See [`docs/objective.md`](docs/objective.md) for the visio
 docker compose -f deploy/docker-compose.yml up -d postgres
 dotnet run --project src/Factarium.Cli -- seed          # deterministic GitHub-shaped data
 dotnet run --project src/Factarium.Cli -- pipeline run  # transform + aggregate
-dotnet run --project src/Factarium.Api                  # dashboard at http://localhost:8080
+dotnet run --project src/Factarium.Api                  # dashboard at http://localhost:4600
 ```
 
 ## Stack
@@ -45,12 +45,19 @@ dotnet run --project src/Factarium.Cli -- db migrate
 # (optional) Load deterministic sample GitHub data so dashboards have something to show
 dotnet run --project src/Factarium.Cli -- seed
 
-# 3a. Run the API (serves built SPA + JSON API) at http://localhost:8080
-dotnet run --project src/Factarium.Api
+# 3a. Run the API (serves built SPA + JSON API) at http://localhost:4600.
+#     `dotnet watch` gives C# Hot Reload — most edits apply without a manual
+#     restart (some structural changes still prompt/require one).
+dotnet watch --project src/Factarium.Api    # or `dotnet run` for no hot reload
 
-# 3b. For frontend hot-reload, run the Vite dev server at http://localhost:5173
+# 3b. For frontend hot-reload, run the Vite dev server at http://localhost:5173.
+#     It proxies /api -> http://localhost:4600 (override with VITE_API_PROXY).
 cd web && npm install && npm run dev
 ```
+
+During front-end work, develop against **http://localhost:5173** — Vite HMR reflects
+`.vue`/JS edits instantly, proxying API calls to the `dotnet watch` process on 4600.
+Two long-running processes, both hot-reloading; you rarely restart either by hand.
 
 Or run the whole stack (api + web + postgres) in containers:
 
@@ -58,9 +65,9 @@ Or run the whole stack (api + web + postgres) in containers:
 docker compose -f deploy/docker-compose.yml up
 ```
 
-- API + built SPA: http://localhost:8080
+- API + built SPA: http://localhost:4600
 - Vite dev server (hot reload, proxies `/api`): http://localhost:5173
-- Health: http://localhost:8080/api/health
+- Health: http://localhost:4600/api/health
 
 ## Ship a single-exe
 
