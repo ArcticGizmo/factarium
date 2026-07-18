@@ -60,3 +60,9 @@ async function load() {
 
 onMounted(load);
 </script>
+
+<style>
+html {
+  overflow-y: scroll;
+}
+</style>
