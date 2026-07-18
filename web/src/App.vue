@@ -9,13 +9,14 @@
       </div>
       <v-divider />
       <v-list nav density="comfortable">
-        <v-list-item
-          v-for="item in navItems"
-          :key="item.path"
-          :to="item.path"
-          :prepend-icon="item.meta?.icon"
-          :title="item.meta?.title"
-        />
+        <!-- Nav order and visibility are authored here, independent of the
+             route table. Reorder freely; add v-if to show/hide an item. -->
+        <NavItem to="/overview" icon="mdi-pulse" title="Overview" />
+        <NavItem to="/repositories" icon="mdi-source-branch" title="Repositories" />
+        <NavItem to="/delivery" icon="mdi-rocket-launch-outline" title="Delivery" />
+        <NavItem to="/claude-code" icon="mdi-robot-outline" title="Claude Code" />
+        <NavItem to="/people" icon="mdi-account-group-outline" title="People" />
+        <NavItem to="/sources" icon="mdi-sync" title="Sources" />
       </v-list>
     </v-navigation-drawer>
 
@@ -48,10 +49,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
-import { routes } from "./router";
-
-// Nav is derived from the route table: every route with meta.nav shows up here.
-const navItems = routes.filter((r) => r.meta?.nav);
+import NavItem from "./components/NavItem.vue";
 
 const route = useRoute();
 const currentTitle = computed(() => route.meta?.title ?? "Factarium");
