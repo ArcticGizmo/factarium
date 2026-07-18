@@ -46,6 +46,13 @@
           <td>
             <div class="d-flex ga-1">
               <v-btn size="x-small" variant="tonal" color="primary" @click="openEdit(i)">Edit</v-btn>
+              <v-btn
+                size="x-small"
+                variant="text"
+                :to="{ name: 'integration-records', params: { id: i.id } }"
+              >
+                View records
+              </v-btn>
               <v-btn size="x-small" variant="text" @click="syncNow(i.id)">Sync</v-btn>
               <v-btn size="x-small" variant="text" color="red" @click="remove(i.id)">Delete</v-btn>
             </div>

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Factarium.Api.Scheduling;
 using Factarium.Application.Security;
 using Factarium.Domain.Sync;
@@ -196,6 +197,72 @@ public static class IntegrationEndpoints
             // Reschedules or unschedules based on the new enabled/cron state.
             await scheduler.ScheduleAsync(integration, ct);
             return Results.NoContent();
+        });
+
+        // Raw records replicated for an integration, grouped into entity-type tabs.
+        group.MapGet("{id:guid}/records/summary", async (Guid id, FactariumDbContext db, CancellationToken ct) =>
+        {
+            var integration = await db.Integrations.FindAsync([id], ct);
+            if (integration is null)
+            {
+                return Results.NotFound();
+            }
+
+            var entityTypes = await db.RawRecords
+                .Where(r => r.IntegrationId == id)
+                .GroupBy(r => r.EntityType)
+                .Select(g => new { EntityType = g.Key, Count = g.Count() })
+                .OrderBy(x => x.EntityType)
+                .ToListAsync(ct);
+
+            return Results.Ok(new { integration.Id, integration.Name, integration.Type, EntityTypes = entityTypes });
+        });
+
+        group.MapGet("{id:guid}/records", async (
+            Guid id, string? entityType, int? limit, FactariumDbContext db, CancellationToken ct) =>
+        {
+            if (!await db.Integrations.AnyAsync(i => i.Id == id, ct))
+            {
+                return Results.NotFound();
+            }
+
+            var take = Math.Clamp(limit ?? 100, 1, 500);
+            var query = db.RawRecords.Where(r => r.IntegrationId == id);
+            if (!string.IsNullOrWhiteSpace(entityType))
+            {
+                query = query.Where(r => r.EntityType == entityType);
+            }
+
+            var records = await query
+                .OrderByDescending(r => r.SourceUpdatedAt ?? r.FetchedAt)
+                .Take(take)
+                .Select(r => new
+                {
+                    r.Id,
+                    r.EntityType,
+                    r.SourceId,
+                    r.SourceUpdatedAt,
+                    r.FirstSeenAt,
+                    r.FetchedAt,
+                    r.Version,
+                    r.Payload,
+                })
+                .ToListAsync(ct);
+
+            // Payload is stored as a JSON string; parse it so it serializes back as real JSON.
+            var result = records.Select(r => new
+            {
+                r.Id,
+                r.EntityType,
+                r.SourceId,
+                r.SourceUpdatedAt,
+                r.FirstSeenAt,
+                r.FetchedAt,
+                r.Version,
+                Payload = JsonSerializer.Deserialize<JsonElement>(r.Payload),
+            });
+
+            return Results.Ok(result);
         });
 
         group.MapPost("{id:guid}/sync", async (

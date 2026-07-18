@@ -123,6 +123,30 @@ export interface Integration {
   config: GitHubConfig | JiraConfig | null;
 }
 
+// --- /api/integrations/{id}/records ---
+export interface RecordTypeCount {
+  entityType: string;
+  count: number;
+}
+
+export interface RecordsSummary {
+  id: string;
+  name: string;
+  type: string;
+  entityTypes: RecordTypeCount[];
+}
+
+export interface RawRecordView {
+  id: number;
+  entityType: string;
+  sourceId: string;
+  sourceUpdatedAt: string | null;
+  firstSeenAt: string;
+  fetchedAt: string;
+  version: number;
+  payload: unknown;
+}
+
 export interface PipelineStep {
   name: string;
   lastStatus: string;
