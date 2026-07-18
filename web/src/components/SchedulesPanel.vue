@@ -1,7 +1,18 @@
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 
 const emit = defineEmits(['changed'])
+
+const typeOptions = [
+  { title: 'GitHub — repos, PRs, commits, reviews', value: 'github' },
+  { title: 'Jira — issues & status', value: 'jira' },
+]
+
+const credentialHint = computed(() =>
+  form.type === 'github'
+    ? 'GitHub → Settings → Developer settings → Personal access tokens (repo read scope). Stored encrypted.'
+    : 'Create at id.atlassian.com → Security → API tokens. Stored encrypted.',
+)
 
 const integrations = ref([])
 const steps = ref([])
@@ -160,24 +171,118 @@ onMounted(async () => {
 
       <v-expand-transition>
         <div v-if="form.show" class="add-form mb-3">
-          <div class="d-flex flex-wrap ga-2">
-            <v-select v-model="form.type" :items="['github', 'jira']" label="Type" density="compact" hide-details style="max-width: 130px" />
-            <v-text-field v-model="form.name" label="Name" density="compact" hide-details style="max-width: 200px" />
-            <v-text-field v-model="form.cron" label="Cron (optional)" placeholder="0 0/30 * * * ?" density="compact" hide-details style="max-width: 200px" />
+          <div class="text-body-2 text-medium-emphasis mb-3">
+            Connect a source. Factarium replicates its data on the schedule below (or on demand),
+            then transforms and aggregates it into the dashboards. Your token is encrypted before it is stored.
           </div>
-          <div class="d-flex flex-wrap ga-2 mt-2">
-            <template v-if="form.type === 'github'">
-              <v-text-field v-model="form.org" label="org" density="compact" hide-details style="max-width: 200px" />
-              <v-text-field v-model="form.repos" label="repos (csv owner/name)" density="compact" hide-details style="max-width: 260px" />
-            </template>
-            <template v-else>
-              <v-text-field v-model="form.baseUrl" label="baseUrl" density="compact" hide-details style="max-width: 240px" />
-              <v-text-field v-model="form.email" label="email" density="compact" hide-details style="max-width: 200px" />
-              <v-text-field v-model="form.projectKeys" label="projectKeys (csv)" density="compact" hide-details style="max-width: 200px" />
-            </template>
-            <v-text-field v-model="form.credential" label="token (stored encrypted)" type="password" density="compact" hide-details style="max-width: 240px" />
-            <v-btn color="primary" variant="tonal" @click="createIntegration">Create</v-btn>
-          </div>
+
+          <v-row dense>
+            <v-col cols="12" sm="4">
+              <v-select
+                v-model="form.type"
+                :items="typeOptions"
+                label="Source type"
+                density="compact"
+                persistent-hint
+                hint="What you're connecting to"
+              />
+            </v-col>
+            <v-col cols="12" sm="4">
+              <v-text-field
+                v-model="form.name"
+                label="Display name"
+                :placeholder="form.type === 'github' ? 'Acme GitHub' : 'Acme Jira'"
+                density="compact"
+                persistent-hint
+                hint="A friendly label shown in this list"
+              />
+            </v-col>
+            <v-col cols="12" sm="4">
+              <v-text-field
+                v-model="form.cron"
+                label="Schedule (cron, optional)"
+                placeholder="0 0/30 * * * ?"
+                density="compact"
+                persistent-hint
+                hint="Blank = manual only · e.g. 0 0/30 * * * ? = every 30 min"
+              />
+            </v-col>
+          </v-row>
+
+          <v-row v-if="form.type === 'github'" dense>
+            <v-col cols="12" sm="6">
+              <v-text-field
+                v-model="form.org"
+                label="Organization or user"
+                placeholder="acme-inc"
+                density="compact"
+                persistent-hint
+                hint="Syncs every repo in this GitHub org/user"
+              />
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field
+                v-model="form.repos"
+                label="Specific repos (optional)"
+                placeholder="acme-inc/api, acme-inc/web"
+                density="compact"
+                persistent-hint
+                hint="owner/name, comma-separated — instead of, or in addition to, an org"
+              />
+            </v-col>
+          </v-row>
+
+          <v-row v-else dense>
+            <v-col cols="12" sm="4">
+              <v-text-field
+                v-model="form.baseUrl"
+                label="Jira site URL"
+                placeholder="https://acme.atlassian.net"
+                density="compact"
+                persistent-hint
+                hint="Your Atlassian Cloud site"
+              />
+            </v-col>
+            <v-col cols="12" sm="4">
+              <v-text-field
+                v-model="form.email"
+                label="Account email"
+                placeholder="you@acme.com"
+                density="compact"
+                persistent-hint
+                hint="Atlassian login email (paired with the token to authenticate)"
+              />
+            </v-col>
+            <v-col cols="12" sm="4">
+              <v-text-field
+                v-model="form.projectKeys"
+                label="Project keys (optional)"
+                placeholder="QAI, OPS"
+                density="compact"
+                persistent-hint
+                hint="Limit to these projects · blank = everything you can see"
+              />
+            </v-col>
+          </v-row>
+
+          <v-row dense align="start">
+            <v-col cols="12" sm="8">
+              <v-text-field
+                v-model="form.credential"
+                :label="form.type === 'github' ? 'GitHub personal access token' : 'Jira API token'"
+                :placeholder="form.type === 'github' ? 'ghp_…' : 'ATATT…'"
+                type="password"
+                density="compact"
+                persistent-hint
+                :hint="credentialHint"
+              />
+            </v-col>
+            <v-col cols="12" sm="4" class="d-flex align-center pt-2">
+              <v-btn color="primary" variant="tonal" :disabled="!form.name" @click="createIntegration">
+                Create source
+              </v-btn>
+            </v-col>
+          </v-row>
         </div>
       </v-expand-transition>
 
