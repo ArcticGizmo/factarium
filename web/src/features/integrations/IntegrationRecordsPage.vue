@@ -75,7 +75,10 @@
             <tr v-for="r in records" :key="r.id">
               <td class="text-caption">{{ fmt(r.sourceUpdatedAt) }}</td>
               <td>
-                <code>{{ commit(r).shortHash }}</code>
+                <a v-if="commit(r).link" :href="commit(r).link!" target="_blank" rel="noopener">
+                  <code>{{ commit(r).shortHash }}</code>
+                </a>
+                <code v-else>{{ commit(r).shortHash }}</code>
               </td>
               <td>{{ commit(r).message }}</td>
               <td class="text-caption">{{ commit(r).authors.join(', ') || '—' }}</td>
@@ -156,6 +159,7 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import BasePage from '../../components/BasePage.vue';
 import type { RecordsSummary, RawRecordView, RecordsPageResult } from '../../types';
+import { formatDateTime as fmt } from '../../utils/datetime';
 
 const route = useRoute();
 const id = computed(() => String(route.params.id));
@@ -297,10 +301,6 @@ function extractAuthors(p: Record<string, any>): string[] {
     if (name && !names.includes(name)) names.push(name);
   }
   return names;
-}
-
-function fmt(ts: string | null | undefined) {
-  return ts ? new Date(ts).toLocaleString() : '—';
 }
 
 function pretty(payload: unknown) {

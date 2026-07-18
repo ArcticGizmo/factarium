@@ -71,6 +71,7 @@ import BasePage from '../../components/BasePage.vue';
 import GitHubIntegrationDialog from './GitHubIntegrationDialog.vue';
 import type { Integration, GitHubConfig } from '../../types';
 import { useIntegrations } from './useIntegrations';
+import { formatDateTime as fmt } from '../../utils/datetime';
 
 const { integrations, error, load } = useIntegrations('github');
 
@@ -100,10 +101,6 @@ async function remove(id: string) {
 function repoLabel(i: Integration): string {
   const config = i.config as GitHubConfig | null;
   return config?.repos?.[0] ?? config?.org ?? i.name;
-}
-
-function fmt(ts: string | null | undefined) {
-  return ts ? new Date(ts).toLocaleString() : '—';
 }
 
 const statusColor: Record<string, string> = {

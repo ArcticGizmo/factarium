@@ -54,6 +54,7 @@ import { computed, onMounted } from 'vue';
 import BasePage from '../../components/BasePage.vue';
 import type { Integration } from '../../types';
 import { useIntegrations } from './useIntegrations';
+import { formatDateTime as fmt } from '../../utils/datetime';
 
 const { integrations, error, load } = useIntegrations('claude-code');
 
@@ -79,10 +80,6 @@ async function save(row: Integration) {
 async function remove(id: string) {
   await fetch(`/api/integrations/${id}`, { method: 'DELETE' });
   await load();
-}
-
-function fmt(ts: string | null | undefined) {
-  return ts ? new Date(ts).toLocaleString() : '—';
 }
 
 onMounted(load);

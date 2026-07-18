@@ -49,6 +49,7 @@
 
 <script setup lang="ts">
 import type { Integration } from '../../types';
+import { formatDateTime as fmt } from '../../utils/datetime';
 
 // Renders the rows for one integration type and owns the generic row actions
 // (toggle/schedule save, manual sync, delete) which are the same across every
@@ -73,10 +74,6 @@ async function syncNow(id: string) {
 async function remove(id: string) {
   await fetch(`/api/integrations/${id}`, { method: 'DELETE' });
   emit('refresh');
-}
-
-function fmt(ts: string | null | undefined) {
-  return ts ? new Date(ts).toLocaleString() : '—';
 }
 
 const statusColor: Record<string, string> = {

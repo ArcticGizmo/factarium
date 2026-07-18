@@ -41,6 +41,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import BasePage from '../../components/BasePage.vue';
 import type { LiveSummary } from '../../types';
+import { formatDateTime } from '../../utils/datetime';
 
 const data = ref<LiveSummary | null>(null);
 const error = ref<string | null>(null);
@@ -80,7 +81,7 @@ const statusColors: Record<string, string> = {
   'To Do': 'grey'
 };
 
-const generated = computed(() => (data.value ? new Date(data.value.generatedAt).toLocaleTimeString() : ''));
+const generated = computed(() => (data.value ? formatDateTime(data.value.generatedAt) : ''));
 </script>
 
 <style scoped>

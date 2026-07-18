@@ -45,6 +45,7 @@
 import { ref, onMounted } from 'vue';
 import BasePage from '../../components/BasePage.vue';
 import type { PipelineStep } from '../../types';
+import { formatDateTime as fmt } from '../../utils/datetime';
 
 const steps = ref<PipelineStep[]>([]);
 const error = ref<string | null>(null);
@@ -85,10 +86,6 @@ async function resetDatabase() {
   } finally {
     busy.value = false;
   }
-}
-
-function fmt(ts: string | null | undefined) {
-  return ts ? new Date(ts).toLocaleString() : '—';
 }
 
 const statusColor: Record<string, string> = {
