@@ -37,59 +37,60 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import VChart from 'vue-echarts'
-import BasePage from './BasePage.vue'
-import { lineOption, barOption } from '../charts'
-import type { RepoActivityData } from '../types'
+import { ref, computed, onMounted } from 'vue';
+import VChart from 'vue-echarts';
+import BasePage from './BasePage.vue';
+import { lineOption, barOption } from '../charts';
+import type { RepoActivityData } from '../types';
 
-const data = ref<RepoActivityData | null>(null)
-const error = ref<string | null>(null)
-const loading = ref(false)
+const data = ref<RepoActivityData | null>(null);
+const error = ref<string | null>(null);
+const loading = ref(false);
 
 async function load() {
-  loading.value = true
-  error.value = null
+  loading.value = true;
+  error.value = null;
   try {
-    data.value = await fetch('/api/dashboards/repo-activity').then((r) => r.json())
+    data.value = await fetch('/api/dashboards/repo-activity').then((r) => r.json());
   } catch (e) {
-    error.value = String(e)
+    error.value = String(e);
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
-onMounted(load)
+onMounted(load);
 
 const tiles = computed(() => {
-  const t = data.value?.totals
-  if (!t) return []
+  const t = data.value?.totals;
+  if (!t) return [];
   return [
     { label: 'Commits', value: t.commits },
     { label: 'PRs opened', value: t.prsOpened },
     { label: 'PRs merged', value: t.prsMerged },
     { label: 'Repositories', value: t.repositories },
     { label: 'People', value: t.people },
-    { label: 'Unmapped identities', value: t.unmappedIdentities },
-  ]
-})
+    { label: 'Unmapped identities', value: t.unmappedIdentities }
+  ];
+});
 
-const commitsOption = computed(() =>
-  lineOption([{ name: 'Commits', points: data.value?.commitsByDay ?? [] }]))
+const commitsOption = computed(() => lineOption([{ name: 'Commits', points: data.value?.commitsByDay ?? [] }]));
 
 const prOption = computed(() =>
   lineOption(
     [
       { name: 'Opened', points: data.value?.prsOpenedByDay ?? [] },
-      { name: 'Merged', points: data.value?.prsMergedByDay ?? [] },
+      { name: 'Merged', points: data.value?.prsMergedByDay ?? [] }
     ],
-    { legend: true },
-  ))
+    { legend: true }
+  )
+);
 
 const latencyOption = computed(() =>
-  lineOption([{ name: 'Hours to first review', points: data.value?.reviewLatencyByDay ?? [] }]))
+  lineOption([{ name: 'Hours to first review', points: data.value?.reviewLatencyByDay ?? [] }])
+);
 
-const byActorOption = computed(() => barOption(data.value?.commitsByActor ?? []))
+const byActorOption = computed(() => barOption(data.value?.commitsByActor ?? []));
 </script>
 
 <style scoped>

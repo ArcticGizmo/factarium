@@ -38,50 +38,49 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import BasePage from './BasePage.vue'
-import type { LiveSummary } from '../types'
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import BasePage from './BasePage.vue';
+import type { LiveSummary } from '../types';
 
-const data = ref<LiveSummary | null>(null)
-const error = ref<string | null>(null)
-let timer: ReturnType<typeof setInterval> | undefined
+const data = ref<LiveSummary | null>(null);
+const error = ref<string | null>(null);
+let timer: ReturnType<typeof setInterval> | undefined;
 
 async function load() {
   try {
-    data.value = await fetch('/api/live/summary').then((r) => r.json())
-    error.value = null
+    data.value = await fetch('/api/live/summary').then((r) => r.json());
+    error.value = null;
   } catch (e) {
-    error.value = String(e)
+    error.value = String(e);
   }
 }
 
 onMounted(() => {
-  load()
-  timer = setInterval(load, 15000) // live: refresh every 15s
-})
-onUnmounted(() => clearInterval(timer))
+  load();
+  timer = setInterval(load, 15000); // live: refresh every 15s
+});
+onUnmounted(() => clearInterval(timer));
 
 const tiles = computed(() => {
-  const d = data.value
-  if (!d) return []
+  const d = data.value;
+  if (!d) return [];
   return [
     { label: 'Open PRs', value: d.pullRequests.open },
     { label: 'Merged (7d)', value: d.pullRequests.mergedLast7d },
     { label: 'Commits (7d)', value: d.commits.last7d },
     { label: 'Issues resolved (7d)', value: d.issues.resolvedLast7d },
-    { label: 'Issue completion', value: `${d.issues.completionPct}%` },
-  ]
-})
+    { label: 'Issue completion', value: `${d.issues.completionPct}%` }
+  ];
+});
 
 const statusColors: Record<string, string> = {
   Done: 'green',
   'In Progress': 'blue',
   'In Review': 'orange',
-  'To Do': 'grey',
-}
+  'To Do': 'grey'
+};
 
-const generated = computed(() =>
-  data.value ? new Date(data.value.generatedAt).toLocaleTimeString() : '')
+const generated = computed(() => (data.value ? new Date(data.value.generatedAt).toLocaleTimeString() : ''));
 </script>
 
 <style scoped>

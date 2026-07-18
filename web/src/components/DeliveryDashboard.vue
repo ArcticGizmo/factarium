@@ -7,9 +7,10 @@
     <div v-if="error" class="text-error mb-2">{{ error }}</div>
 
     <v-alert type="info" variant="tonal" density="compact" class="mb-3">
-      Deployment frequency &amp; change lead time use a proxy: <strong>merged PRs
-      targeting <code>{{ branch }}</code></strong>. Wire a real deploy/incident source later
-      for full DORA (change-failure rate, MTTR).
+      Deployment frequency &amp; change lead time use a proxy:
+      <strong
+        >merged PRs targeting <code>{{ branch }}</code></strong
+      >. Wire a real deploy/incident source later for full DORA (change-failure rate, MTTR).
     </v-alert>
 
     <v-row dense class="mb-2">
@@ -47,57 +48,52 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import VChart from 'vue-echarts'
-import BasePage from './BasePage.vue'
-import { lineOption } from '../charts'
-import type { DeliveryData } from '../types'
+import { ref, computed, onMounted } from 'vue';
+import VChart from 'vue-echarts';
+import BasePage from './BasePage.vue';
+import { lineOption } from '../charts';
+import type { DeliveryData } from '../types';
 
-const data = ref<DeliveryData | null>(null)
-const error = ref<string | null>(null)
-const loading = ref(false)
+const data = ref<DeliveryData | null>(null);
+const error = ref<string | null>(null);
+const loading = ref(false);
 
 async function load() {
-  loading.value = true
-  error.value = null
+  loading.value = true;
+  error.value = null;
   try {
-    data.value = await fetch('/api/dashboards/delivery').then((r) => r.json())
+    data.value = await fetch('/api/dashboards/delivery').then((r) => r.json());
   } catch (e) {
-    error.value = String(e)
+    error.value = String(e);
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
-onMounted(load)
+onMounted(load);
 
-const branch = computed(() => data.value?.deployProxyBranch ?? 'main')
+const branch = computed(() => data.value?.deployProxyBranch ?? 'main');
 
 const tiles = computed(() => {
-  const t = data.value?.totals
-  if (!t) return []
+  const t = data.value?.totals;
+  if (!t) return [];
   return [
     { label: 'Deployments', value: t.deploys },
     { label: 'Avg lead time (h)', value: t.avgLeadTimeHours },
     { label: 'PRs merged', value: t.prsMerged },
     { label: 'Issues resolved', value: t.issuesResolved },
     { label: 'Avg cycle time (h)', value: t.avgIssueCycleHours },
-    { label: 'Avg review wait (h)', value: t.avgReviewLatencyHours },
-  ]
-})
+    { label: 'Avg review wait (h)', value: t.avgReviewLatencyHours }
+  ];
+});
 
-const deploysOption = computed(() =>
-  lineOption([{ name: 'Deployments', points: data.value?.deploysByDay ?? [] }]))
-const leadTimeOption = computed(() =>
-  lineOption([{ name: 'Lead time (h)', points: data.value?.leadTimeByDay ?? [] }]))
-const throughputOption = computed(() =>
-  lineOption([{ name: 'PRs merged', points: data.value?.prsMergedByDay ?? [] }]))
+const deploysOption = computed(() => lineOption([{ name: 'Deployments', points: data.value?.deploysByDay ?? [] }]));
+const leadTimeOption = computed(() => lineOption([{ name: 'Lead time (h)', points: data.value?.leadTimeByDay ?? [] }]));
+const throughputOption = computed(() => lineOption([{ name: 'PRs merged', points: data.value?.prsMergedByDay ?? [] }]));
 const issuesOption = computed(() =>
-  lineOption([
-    { name: 'Issues resolved', points: data.value?.issuesResolvedByDay ?? [] },
-  ]))
-const cycleOption = computed(() =>
-  lineOption([{ name: 'Cycle time (h)', points: data.value?.cycleTimeByDay ?? [] }]))
+  lineOption([{ name: 'Issues resolved', points: data.value?.issuesResolvedByDay ?? [] }])
+);
+const cycleOption = computed(() => lineOption([{ name: 'Cycle time (h)', points: data.value?.cycleTimeByDay ?? [] }]));
 </script>
 
 <style scoped>

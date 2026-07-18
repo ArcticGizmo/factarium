@@ -3,9 +3,7 @@
     <v-navigation-drawer permanent color="surface" width="240">
       <div class="px-4 py-4">
         <div class="text-h6">Factarium</div>
-        <div class="text-caption text-medium-emphasis">
-          sync · transform · aggregate · render
-        </div>
+        <div class="text-caption text-medium-emphasis">sync · transform · aggregate · render</div>
       </div>
       <v-divider />
       <v-list nav density="comfortable">
@@ -25,12 +23,7 @@
         <span v-if="me" class="text-caption text-medium-emphasis mr-4">
           {{ me.displayName }}
         </span>
-        <v-chip
-          v-if="health"
-          :color="health.status === 'healthy' ? 'green' : 'orange'"
-          variant="flat"
-          size="small"
-        >
+        <v-chip v-if="health" :color="health.status === 'healthy' ? 'green' : 'orange'" variant="flat" size="small">
           {{ health.status }} · db {{ health.database }}
         </v-chip>
       </template>
@@ -46,8 +39,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import NavItem from "./components/NavItem.vue";
+import { ref, onMounted } from 'vue';
+import NavItem from './components/NavItem.vue';
 
 const health = ref<{ status: string; database: string } | null>(null);
 const me = ref<{ displayName: string } | null>(null);
@@ -56,8 +49,8 @@ const error = ref<string | null>(null);
 async function load() {
   try {
     const [h, m] = await Promise.all([
-      fetch("/api/health").then((r) => r.json()),
-      fetch("/api/me").then((r) => r.json()),
+      fetch('/api/health').then((r) => r.json()),
+      fetch('/api/me').then((r) => r.json())
     ]);
     health.value = h;
     me.value = m;

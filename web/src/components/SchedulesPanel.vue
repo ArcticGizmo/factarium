@@ -39,8 +39,8 @@
     <v-expand-transition>
       <div v-if="form.show" class="add-form mb-3">
         <div class="text-body-2 text-medium-emphasis mb-3">
-          Connect a source. Factarium replicates its data on the schedule below (or on demand),
-          then transforms and aggregates it into the dashboards. Your token is encrypted before it is stored.
+          Connect a source. Factarium replicates its data on the schedule below (or on demand), then transforms and
+          aggregates it into the dashboards. Your token is encrypted before it is stored.
         </div>
 
         <v-row dense>
@@ -171,10 +171,18 @@
           <td>{{ i.type }}</td>
           <td><v-switch v-model="i.enabled" density="compact" hide-details color="primary" /></td>
           <td>
-            <v-text-field v-model="i.scheduleCron" density="compact" hide-details placeholder="manual" style="max-width: 190px" />
+            <v-text-field
+              v-model="i.scheduleCron"
+              density="compact"
+              hide-details
+              placeholder="manual"
+              style="max-width: 190px"
+            />
           </td>
           <td>
-            <v-chip :color="statusColor[i.lastRunStatus] || 'grey'" size="x-small" variant="flat">{{ i.lastRunStatus }}</v-chip>
+            <v-chip :color="statusColor[i.lastRunStatus] || 'grey'" size="x-small" variant="flat">{{
+              i.lastRunStatus
+            }}</v-chip>
             <div v-if="i.lastRunError" class="text-caption text-error">{{ i.lastRunError }}</div>
           </td>
           <td class="text-caption">{{ fmt(i.nextRunAt) }}</td>
@@ -192,28 +200,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
-import BasePage from './BasePage.vue'
-import type { Integration, PipelineStep } from '../types'
+import { ref, reactive, computed, onMounted } from 'vue';
+import BasePage from './BasePage.vue';
+import type { Integration, PipelineStep } from '../types';
 
-const emit = defineEmits(['changed'])
+const emit = defineEmits(['changed']);
 
 const typeOptions = [
   { title: 'GitHub — repos, PRs, commits, reviews', value: 'github' },
-  { title: 'Jira — issues & status', value: 'jira' },
-]
+  { title: 'Jira — issues & status', value: 'jira' }
+];
 
 const credentialHint = computed(() =>
   form.type === 'github'
     ? 'GitHub → Settings → Developer settings → Personal access tokens (repo read scope). Stored encrypted.'
-    : 'Create at id.atlassian.com → Security → API tokens. Stored encrypted.',
-)
+    : 'Create at id.atlassian.com → Security → API tokens. Stored encrypted.'
+);
 
-const integrations = ref<Integration[]>([])
-const steps = ref<PipelineStep[]>([])
-const error = ref<string | null>(null)
-const busy = ref(false)
-const isDev = ref(false)
+const integrations = ref<Integration[]>([]);
+const steps = ref<PipelineStep[]>([]);
+const error = ref<string | null>(null);
+const busy = ref(false);
+const isDev = ref(false);
 
 const form = reactive({
   show: false,
@@ -225,18 +233,18 @@ const form = reactive({
   baseUrl: '',
   email: '',
   projectKeys: '',
-  credential: '',
-})
+  credential: ''
+});
 
 async function load() {
   try {
-    ;[integrations.value, steps.value] = await Promise.all([
+    [integrations.value, steps.value] = await Promise.all([
       fetch('/api/integrations').then((r) => r.json()),
-      fetch('/api/pipeline').then((r) => r.json()),
-    ])
-    error.value = null
+      fetch('/api/pipeline').then((r) => r.json())
+    ]);
+    error.value = null;
   } catch (e) {
-    error.value = String(e)
+    error.value = String(e);
   }
 }
 
@@ -244,28 +252,28 @@ async function save(row: Integration) {
   await fetch(`/api/integrations/${row.id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled: row.enabled, cron: row.scheduleCron || null }),
-  })
-  await refresh()
+    body: JSON.stringify({ enabled: row.enabled, cron: row.scheduleCron || null })
+  });
+  await refresh();
 }
 
 async function syncNow(id: number) {
-  await fetch(`/api/integrations/${id}/sync`, { method: 'POST' })
-  setTimeout(refresh, 1500)
+  await fetch(`/api/integrations/${id}/sync`, { method: 'POST' });
+  setTimeout(refresh, 1500);
 }
 
 async function remove(id: number) {
-  await fetch(`/api/integrations/${id}`, { method: 'DELETE' })
-  await refresh()
+  await fetch(`/api/integrations/${id}`, { method: 'DELETE' });
+  await refresh();
 }
 
 async function runPipeline() {
-  busy.value = true
+  busy.value = true;
   try {
-    await fetch('/api/pipeline/run', { method: 'POST' })
-    await refresh()
+    await fetch('/api/pipeline/run', { method: 'POST' });
+    await refresh();
   } finally {
-    busy.value = false
+    busy.value = false;
   }
 }
 
@@ -273,7 +281,7 @@ async function createIntegration() {
   const settings =
     form.type === 'github'
       ? { org: form.org || null, repos: form.repos || null }
-      : { baseUrl: form.baseUrl || null, email: form.email || null, projectKeys: form.projectKeys || null }
+      : { baseUrl: form.baseUrl || null, email: form.email || null, projectKeys: form.projectKeys || null };
 
   await fetch('/api/integrations', {
     method: 'POST',
@@ -284,46 +292,68 @@ async function createIntegration() {
       cron: form.cron || null,
       enabled: !!form.cron,
       settings,
-      credential: form.credential || null,
-    }),
-  })
-  Object.assign(form, { show: false, name: '', cron: '', org: '', repos: '', baseUrl: '', email: '', projectKeys: '', credential: '' })
-  await refresh()
+      credential: form.credential || null
+    })
+  });
+  Object.assign(form, {
+    show: false,
+    name: '',
+    cron: '',
+    org: '',
+    repos: '',
+    baseUrl: '',
+    email: '',
+    projectKeys: '',
+    credential: ''
+  });
+  await refresh();
 }
 
 async function refresh() {
-  await load()
-  emit('changed')
+  await load();
+  emit('changed');
 }
 
 function fmt(ts: string | null | undefined) {
-  return ts ? new Date(ts).toLocaleString() : '—'
+  return ts ? new Date(ts).toLocaleString() : '—';
 }
 
-const statusColor: Record<string, string> = { Success: 'green', Failed: 'red', Running: 'blue', Never: 'grey', success: 'green', failed: 'red', never: 'grey' }
+const statusColor: Record<string, string> = {
+  Success: 'green',
+  Failed: 'red',
+  Running: 'blue',
+  Never: 'grey',
+  success: 'green',
+  failed: 'red',
+  never: 'grey'
+};
 
 async function resetDatabase() {
-  if (!window.confirm('Clear ALL synced data (integrations, raw records, canonical, metrics, people)? This cannot be undone.')) {
-    return
+  if (
+    !window.confirm(
+      'Clear ALL synced data (integrations, raw records, canonical, metrics, people)? This cannot be undone.'
+    )
+  ) {
+    return;
   }
-  busy.value = true
+  busy.value = true;
   try {
-    await fetch('/api/debug/reset', { method: 'POST' })
-    await refresh()
+    await fetch('/api/debug/reset', { method: 'POST' });
+    await refresh();
   } finally {
-    busy.value = false
+    busy.value = false;
   }
 }
 
 onMounted(async () => {
-  await load()
+  await load();
   try {
-    const health = await fetch('/api/health').then((r) => r.json())
-    isDev.value = health.environment === 'Development'
+    const health = await fetch('/api/health').then((r) => r.json());
+    isDev.value = health.environment === 'Development';
   } catch {
-    isDev.value = false
+    isDev.value = false;
   }
-})
+});
 </script>
 
 <style scoped>

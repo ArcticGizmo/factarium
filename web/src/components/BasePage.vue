@@ -16,7 +16,7 @@
 // title (and optional subtitle / header actions), so page identity lives with
 // the page rather than in the route table.
 defineProps<{
-  title: string
-  subtitle?: string
-}>()
+  title: string;
+  subtitle?: string;
+}>();
 </script>
