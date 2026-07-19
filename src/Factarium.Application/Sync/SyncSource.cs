@@ -12,11 +12,30 @@ public interface ISyncSource
 }
 
 /// <summary>
-/// Scheduled, cursor-based source (GitHub, Jira). Implemented in Phase 1+.
+/// Scheduled, cursor-based source (GitHub, Jira). A source is decomposed into
+/// independently-runnable entity units (e.g. "issue", "issue_changelog"): the
+/// orchestrator runs each one on its own, committing and recording it separately so a
+/// failure in one entity never discards another's records. Entities are listed in
+/// dependency order (roots first); dependent entities read their inputs from the bronze
+/// tier via <see cref="SyncContext.Reader"/> and keep their own cursor.
 /// </summary>
 public interface IPullSource : ISyncSource
 {
-    Task<SyncResult> PullAsync(SyncContext context, CancellationToken cancellationToken);
+    /// <summary>The entity types this source produces, in dependency order.</summary>
+    IReadOnlyList<string> Entities { get; }
+
+    /// <summary>
+    /// Fetches and writes one entity's records, advancing that entity's cursor. Returns
+    /// the count written (or a failure). Throwing is treated the same as a failed result.
+    /// </summary>
+    Task<SyncResult> PullEntityAsync(string entity, SyncContext context, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Cursor-key prefixes whose removal makes the given bronze entity type re-replicate
+    /// from scratch on the next sync. Used when purging an entity's records so a re-sync
+    /// brings the data back. Empty when the entity has no cursor (always re-fetched).
+    /// </summary>
+    IReadOnlyList<string> CursorKeyPrefixesForEntity(string entityType);
 }
 
 /// <summary>

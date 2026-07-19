@@ -10,5 +10,10 @@ namespace Factarium.Application.Sync;
 /// </summary>
 public interface IIntegrationSyncService
 {
-    Task<SyncResult> RunAsync(Guid integrationId, SyncRunTrigger trigger, CancellationToken cancellationToken);
+    /// <summary>
+    /// Runs a sync. When <paramref name="entity"/> is null every entity runs; otherwise
+    /// only that one entity runs (each still recorded as its own <see cref="Domain.Sync.SyncRun"/>).
+    /// </summary>
+    Task<SyncResult> RunAsync(
+        Guid integrationId, SyncRunTrigger trigger, string? entity, CancellationToken cancellationToken);
 }

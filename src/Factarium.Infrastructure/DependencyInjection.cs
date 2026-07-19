@@ -45,6 +45,7 @@ public static class DependencyInjection
 
         services.AddScoped<ICredentialProtector, DataProtectionCredentialProtector>();
         services.AddScoped<IRawRecordSink, EfRawRecordSink>();
+        services.AddScoped<IRawRecordReader, EfRawRecordReader>();
         services.AddScoped<IIntegrationSyncService, IntegrationSyncService>();
         services.AddScoped<IPushIngestionService, PushIngestionService>();
         services.AddScoped<ISampleDataSeeder, SampleDataSeeder>();

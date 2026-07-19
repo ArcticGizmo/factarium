@@ -21,6 +21,9 @@ public sealed class IntegrationSyncJob(IIntegrationSyncService sync, ILogger<Int
     /// </summary>
     public const string ManualTriggerKey = "manualTrigger";
 
+    /// <summary>Data-map key naming a single entity to run; absent means run every entity.</summary>
+    public const string EntityKey = "entity";
+
     public async Task Execute(IJobExecutionContext context)
     {
         var raw = context.MergedJobDataMap.GetString(IntegrationIdKey);
@@ -34,6 +37,10 @@ public sealed class IntegrationSyncJob(IIntegrationSyncService sync, ILogger<Int
             ? SyncRunTrigger.Manual
             : SyncRunTrigger.Scheduled;
 
-        await sync.RunAsync(integrationId, trigger, context.CancellationToken);
+        var entity = context.MergedJobDataMap.ContainsKey(EntityKey)
+            ? context.MergedJobDataMap.GetString(EntityKey)
+            : null;
+
+        await sync.RunAsync(integrationId, trigger, entity, context.CancellationToken);
     }
 }

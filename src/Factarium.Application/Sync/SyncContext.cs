@@ -23,6 +23,9 @@ public sealed class SyncContext
     public required ICursorStore Cursor { get; init; }
 
     public required IRawRecordSink Sink { get; init; }
+
+    /// <summary>Reads back bronze records so a dependent entity can source its work-set.</summary>
+    public required IRawRecordReader Reader { get; init; }
 }
 
 /// <summary>

@@ -31,6 +31,16 @@
         hide-details
         style="max-width: 160px"
       />
+      <v-select
+        v-model="entityType"
+        :items="entityOptions"
+        item-title="label"
+        item-value="value"
+        label="Entity"
+        density="compact"
+        hide-details
+        style="max-width: 200px"
+      />
       <v-spacer />
       <v-select
         v-model="pageSize"
@@ -49,6 +59,7 @@
         <thead>
           <tr>
             <th>Integration</th>
+            <th style="width: 160px">Entity</th>
             <th style="width: 110px">Trigger</th>
             <th style="width: 110px">Status</th>
             <th style="width: 170px">Started</th>
@@ -59,12 +70,16 @@
         </thead>
         <tbody>
           <tr v-if="runs.length === 0">
-            <td colspan="7" class="text-medium-emphasis text-caption py-4">No sync runs match these filters.</td>
+            <td colspan="8" class="text-medium-emphasis text-caption py-4">No sync runs match these filters.</td>
           </tr>
           <tr v-for="r in runs" :key="r.id">
             <td>
               <span class="font-weight-medium">{{ r.integrationName }}</span>
               <v-chip size="x-small" variant="tonal" class="ml-2">{{ r.integrationType }}</v-chip>
+            </td>
+            <td>
+              <v-chip v-if="r.entityType" size="x-small" variant="tonal" color="primary">{{ r.entityType }}</v-chip>
+              <span v-else class="text-medium-emphasis">—</span>
             </td>
             <td>
               <v-chip size="x-small" variant="tonal" :prepend-icon="triggerIcon[r.trigger]">{{ r.trigger }}</v-chip>
@@ -113,7 +128,11 @@ const pageSize = ref(25);
 const integrationId = ref<string | null>(null);
 // '' = all statuses; otherwise one of Running / Success / Failed.
 const status = ref<string>('');
+// '' = all entities; otherwise a specific entity type (e.g. "issue").
+const entityType = ref<string>('');
 const integrations = ref<Integration[]>([]);
+// Distinct entity types seen so far, so the filter can list them.
+const knownEntities = ref<string[]>([]);
 const error = ref<string | null>(null);
 const loading = ref(false);
 
@@ -127,6 +146,11 @@ const statusOptions = [
 const integrationOptions = computed(() => [
   { label: 'All integrations', value: null },
   ...integrations.value.map((i) => ({ label: i.name, value: i.id }))
+]);
+
+const entityOptions = computed(() => [
+  { label: 'All entities', value: '' },
+  ...knownEntities.value.map((e) => ({ label: e, value: e }))
 ]);
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
@@ -160,10 +184,17 @@ async function loadRuns() {
     });
     if (integrationId.value) params.set('integrationId', integrationId.value);
     if (status.value) params.set('status', status.value);
+    if (entityType.value) params.set('entityType', entityType.value);
 
     const result = await api.url(`/sync-runs?${params}`).get().json<SyncRunsPageResult>();
     runs.value = result.runs;
     total.value = result.total;
+    // Grow the entity filter's option list with any new entity types seen.
+    for (const r of result.runs) {
+      if (r.entityType && !knownEntities.value.includes(r.entityType)) {
+        knownEntities.value = [...knownEntities.value, r.entityType].sort();
+      }
+    }
     error.value = null;
   } catch (e) {
     error.value = String(e);
@@ -195,7 +226,7 @@ function duration(r: SyncRun): string {
 }
 
 // Any filter / page-size change resets to page 1 and reloads.
-watch([integrationId, status, pageSize], () => {
+watch([integrationId, status, entityType, pageSize], () => {
   page.value = 1;
   loadRuns();
 });

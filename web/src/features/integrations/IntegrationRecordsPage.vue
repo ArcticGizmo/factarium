@@ -73,6 +73,16 @@
           hide-details
           style="max-width: 120px"
         />
+        <v-btn
+          v-if="selectedType"
+          size="small"
+          variant="tonal"
+          color="red"
+          prepend-icon="mdi-delete-sweep"
+          @click="purgeOpen = true"
+        >
+          Purge {{ selectedType }}
+        </v-btn>
       </div>
 
       <div v-if="loading" class="text-medium-emphasis text-caption py-2">Loading…</div>
@@ -207,6 +217,24 @@
       </template>
     </template>
 
+    <!-- Purge confirmation -->
+    <v-dialog v-model="purgeOpen" max-width="480">
+      <v-card>
+        <v-card-title class="pt-4">Purge {{ selectedType }} records?</v-card-title>
+        <v-card-text>
+          This permanently deletes all <strong>{{ selectedType }}</strong> records for this connection ({{
+            selectedTypeCount
+          }}
+          rows) and resets its sync position, so the next sync re-fetches them from scratch. This can't be undone.
+        </v-card-text>
+        <v-card-actions class="px-4 pb-4">
+          <v-spacer />
+          <v-btn variant="text" @click="purgeOpen = false">Cancel</v-btn>
+          <v-btn color="red" variant="tonal" :loading="purging" @click="purge">Purge</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Raw payload modal -->
     <v-dialog v-model="rawOpen" max-width="760">
       <v-card>
@@ -255,6 +283,12 @@ const loading = ref(false);
 
 const rawOpen = ref(false);
 const rawRecord = ref<RawRecordView | null>(null);
+
+const purgeOpen = ref(false);
+const purging = ref(false);
+const selectedTypeCount = computed(
+  () => summary.value?.entityTypes.find((t) => t.entityType === selectedType.value)?.count ?? 0
+);
 
 const title = computed(() => (summary.value ? `${summary.value.name} — records` : 'Records'));
 const repo = computed(() => summary.value?.repository ?? null);
@@ -344,6 +378,25 @@ watch([selectedType, dateRange, pageSize], () => {
 function openRaw(r: RawRecordView) {
   rawRecord.value = r;
   rawOpen.value = true;
+}
+
+// Deletes every record of the selected entity type and resets its sync cursor, then
+// reloads (the purged tab drops and selection falls back to the first remaining type).
+async function purge() {
+  if (!selectedType.value) return;
+  purging.value = true;
+  try {
+    await api
+      .url(`/integrations/${id.value}/records?entityType=${encodeURIComponent(selectedType.value)}`)
+      .delete()
+      .res();
+    purgeOpen.value = false;
+    await reload();
+  } catch (e) {
+    error.value = String(e);
+  } finally {
+    purging.value = false;
+  }
 }
 
 // --- commit column extraction ---

@@ -14,6 +14,7 @@ internal sealed class SyncRunConfiguration : IEntityTypeConfiguration<SyncRun>
         // Snapshotted from the integration at run time; lengths match "integrations".
         builder.Property(x => x.IntegrationName).HasMaxLength(256).IsRequired();
         builder.Property(x => x.IntegrationType).HasMaxLength(64).IsRequired();
+        builder.Property(x => x.EntityType).HasMaxLength(128);
 
         builder.Property(x => x.Trigger)
             .HasConversion<string>()

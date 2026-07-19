@@ -17,6 +17,7 @@ public static class SyncRunEndpoints
         group.MapGet("", async (
             Guid? integrationId,
             string? status,
+            string? entityType,
             int? page,
             int? pageSize,
             FactariumDbContext db,
@@ -30,6 +31,11 @@ public static class SyncRunEndpoints
             if (integrationId is not null)
             {
                 query = query.Where(r => r.IntegrationId == integrationId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(entityType))
+            {
+                query = query.Where(r => r.EntityType == entityType);
             }
 
             // Filter by run status when a recognised value is supplied (ignored otherwise).
@@ -52,6 +58,7 @@ public static class SyncRunEndpoints
                     r.IntegrationId,
                     r.IntegrationName,
                     r.IntegrationType,
+                    r.EntityType,
                     Trigger = r.Trigger.ToString(),
                     Status = r.Status.ToString(),
                     r.StartedAt,

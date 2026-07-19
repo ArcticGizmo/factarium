@@ -7,50 +7,91 @@ namespace Factarium.Integrations.Jira;
 
 /// <summary>
 /// Pull source for Jira Cloud. Bounded to a single project (<see cref="JiraSourceConfig"/>)
-/// with a historical <c>SyncSince</c> floor, it replicates four bronze entity types:
-/// <c>issue</c> (rich fields incl. story points + sprint), <c>issue_changelog</c> (full
-/// history for time-in-status and scope changes), <c>sprint</c> (derived from the issues'
-/// Sprint field, so no Jira Software/Agile scope is needed), and <c>issue_devlinks</c>
-/// (best-effort PR/branch links). An updated-time cursor makes runs after the first incremental.
+/// with a historical <c>SyncSince</c> floor, it runs four independent entities:
+/// <c>issue</c> (rich fields incl. story points + sprint, fetched from the API), and three
+/// derived from the replicated issues — <c>sprint</c> (from the issues' Sprint field, so no
+/// Jira Software/Agile scope is needed), <c>issue_changelog</c> (full history for
+/// time-in-status and scope changes), and <c>issue_devlinks</c> (best-effort PR/branch
+/// links, classic tokens only). Each entity keeps its own updated-time cursor and commits
+/// independently, so a failure in one never discards another's records.
 /// </summary>
 public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource> logger) : IPullSource
 {
     private const string Source = "jira";
     private const string CursorKey = "issues:updated";
+    private const string SprintCursorKey = "sprint:since";
+    private const string ChangelogCursorKey = "changelog:since";
+    private const string DevLinksCursorKey = "devlinks:since";
     private const string StoryPointsFieldKey = "field:storypoints";
     private const string SprintFieldKey = "field:sprint";
     private const string CloudIdKey = "meta:cloudId";
+
+    // Records committed (and cursor advanced) every this many, so a mid-entity failure
+    // leaves prior batches persisted and resumable.
+    private const int BatchSize = 200;
 
     private static readonly string[] BaseFields =
         ["summary", "status", "issuetype", "assignee", "created", "updated", "resolutiondate", "project", "parent"];
 
     public string Type => Source;
 
-    public async Task<SyncResult> PullAsync(SyncContext context, CancellationToken cancellationToken)
+    // issue first: sprint/changelog/devlinks read the issues it replicates to bronze.
+    public IReadOnlyList<string> Entities { get; } = ["issue", "sprint", "issue_changelog", "issue_devlinks"];
+
+    public IReadOnlyList<string> CursorKeyPrefixesForEntity(string entityType) => entityType switch
+    {
+        "issue" => [CursorKey],
+        "sprint" => [SprintCursorKey],
+        "issue_changelog" => [ChangelogCursorKey],
+        "issue_devlinks" => [DevLinksCursorKey],
+        _ => [],
+    };
+
+    public async Task<SyncResult> PullEntityAsync(string entity, SyncContext context, CancellationToken cancellationToken)
+    {
+        var (prep, failure) = await PrepareAsync(context, cancellationToken);
+        if (prep is null)
+        {
+            return failure!;
+        }
+
+        return entity switch
+        {
+            "issue" => await SyncIssuesAsync(context, prep, cancellationToken),
+            "sprint" => await SyncSprintsAsync(context, prep, cancellationToken),
+            "issue_changelog" => await SyncChangelogsAsync(context, prep, cancellationToken),
+            "issue_devlinks" => await SyncDevLinksAsync(context, prep, cancellationToken),
+            _ => SyncResult.Ok(0),
+        };
+    }
+
+    // Config validation + gateway/cloud-id resolution + field-id discovery, shared by every
+    // entity. Cheap on repeat calls (cloud id and field ids are cached in the cursor).
+    private async Task<(JiraPrep? Prep, SyncResult? Failure)> PrepareAsync(
+        SyncContext context, CancellationToken cancellationToken)
     {
         if (context.Config is not JiraSourceConfig config)
         {
-            return SyncResult.Failed("Jira integration is misconfigured (expected Jira configuration).");
+            return (null, SyncResult.Failed("Jira integration is misconfigured (expected Jira configuration)."));
         }
 
         if (string.IsNullOrWhiteSpace(config.BaseUrl) || string.IsNullOrWhiteSpace(config.Email))
         {
-            return SyncResult.Failed("Jira integration requires a site URL and an account email.");
+            return (null, SyncResult.Failed("Jira integration requires a site URL and an account email."));
         }
 
         if (string.IsNullOrWhiteSpace(config.ProjectKey))
         {
-            return SyncResult.Failed("Jira integration requires a project key.");
+            return (null, SyncResult.Failed("Jira integration requires a project key."));
         }
 
         if (string.IsNullOrWhiteSpace(context.Credential))
         {
-            return SyncResult.Failed("Jira integration requires an API token credential.");
+            return (null, SyncResult.Failed("Jira integration requires an API token credential."));
         }
 
         var email = config.Email;
         var token = context.Credential;
-        var projectKey = config.ProjectKey;
 
         // Scoped tokens go through the Atlassian API gateway (site cloud id resolved once
         // and cached); classic tokens hit the site directly.
@@ -63,7 +104,7 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
                 cloudId = await client.ResolveCloudIdAsync(config.BaseUrl, cancellationToken);
                 if (string.IsNullOrWhiteSpace(cloudId))
                 {
-                    return SyncResult.Failed("Could not resolve the Jira cloud id for scoped-token access.");
+                    return (null, SyncResult.Failed("Could not resolve the Jira cloud id for scoped-token access."));
                 }
 
                 context.Cursor.Set(CloudIdKey, cloudId);
@@ -73,27 +114,30 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
         }
 
         var (storyPointsFieldId, sprintFieldId) = await ResolveFieldIdsAsync(context, apiRoot, email, token, cancellationToken);
+        return (new JiraPrep(config, apiRoot, email, token, storyPointsFieldId, sprintFieldId), null);
+    }
 
-        // The floor is the later of the configured history bound and the incremental cursor.
+    private sealed record JiraPrep(
+        JiraSourceConfig Config,
+        string ApiRoot,
+        string Email,
+        string Token,
+        string? StoryPointsFieldId,
+        string? SprintFieldId);
+
+    // "issue": fetch changed issues from the API and write them, advancing issues:updated.
+    private async Task<SyncResult> SyncIssuesAsync(SyncContext context, JiraPrep prep, CancellationToken cancellationToken)
+    {
         var lastCursor = ParseDate(context.Cursor.Get(CursorKey));
-        var floor = Latest(config.SyncSince, lastCursor);
-        var jql = BuildJql(projectKey, floor);
+        var floor = Latest(prep.Config.SyncSince, lastCursor);
+        var jql = BuildJql(prep.Config.ProjectKey!, floor);
+        var fields = BuildFields(prep);
 
-        var fields = BaseFields
-            .Append(storyPointsFieldId)
-            .Append(sprintFieldId)
-            .Where(f => !string.IsNullOrWhiteSpace(f))
-            .Select(f => f!)
-            .ToArray();
+        var batch = new List<RawFact>();
+        var written = 0;
+        DateTimeOffset? maxUpdated = null;
 
-        var facts = new List<RawFact>();
-        var issueIds = new List<string>();
-        // Sprints are derived from the issues' Sprint field (deduped by id), which avoids
-        // the Agile API and its Jira Software scope that scoped tokens can't grant.
-        var sprints = new Dictionary<string, JsonElement>();
-        DateTimeOffset? maxUpdated = floor;
-
-        await foreach (var issue in client.SearchIssuesAsync(apiRoot, jql, fields, email, token, cancellationToken))
+        await foreach (var issue in client.SearchIssuesAsync(prep.ApiRoot, jql, fields, prep.Email, prep.Token, cancellationToken))
         {
             var id = issue.TryGetProperty("id", out var idValue) ? idValue.GetString() : null;
             if (id is null)
@@ -101,73 +145,164 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
                 continue;
             }
 
-            var hasFields = issue.TryGetProperty("fields", out var f);
-            var updated = hasFields ? ParseDateElement(f, "updated") : null;
-            facts.Add(new RawFact(Source, "issue", id, issue.GetRawText(), updated));
-            issueIds.Add(id);
-
-            if (hasFields && sprintFieldId is not null)
-            {
-                CollectSprints(f, sprintFieldId, sprints);
-            }
-
+            var updated = issue.TryGetProperty("fields", out var f) ? ParseDateElement(f, "updated") : null;
+            batch.Add(new RawFact(Source, "issue", id, issue.GetRawText(), updated));
             if (updated is not null && (maxUpdated is null || updated > maxUpdated))
             {
                 maxUpdated = updated;
             }
-        }
 
-        // Full changelog for each changed issue (accurate time-in-status and sprint scope changes).
-        foreach (var id in issueIds)
-        {
-            facts.Add(await BuildChangelogFactAsync(apiRoot, id, email, token, cancellationToken));
-        }
-
-        // Dev-links come from an internal endpoint that scoped tokens can't reach, so only
-        // attempt it for classic tokens. Best-effort even then: circuit-break on first failure.
-        if (config.ScopedToken)
-        {
-            logger.LogInformation("Scoped-token mode: skipping dev-status PR links (not available via the API gateway)");
-        }
-        else
-        {
-            var devLinksAvailable = true;
-            foreach (var id in issueIds)
+            if (batch.Count >= BatchSize)
             {
-                if (!devLinksAvailable)
-                {
-                    break;
-                }
-
-                try
-                {
-                    var dev = await client.GetIssueDevLinksAsync(apiRoot, id, email, token, cancellationToken);
-                    if (dev is not null)
-                    {
-                        facts.Add(new RawFact(Source, "issue_devlinks", id, dev.Value.GetRawText(), DevLinksUpdatedAt(dev.Value)));
-                    }
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "Jira dev-status unavailable; skipping dev-links for the rest of this run");
-                    devLinksAvailable = false;
-                }
+                written += await FlushAsync(context, batch, CursorKey, maxUpdated, cancellationToken);
             }
         }
 
-        facts.AddRange(BuildSprintFacts(sprints, config.SyncSince));
-
-        var written = await context.Sink.WriteAsync(context.IntegrationId, facts, cancellationToken);
-        if (maxUpdated is not null && maxUpdated != lastCursor)
-        {
-            context.Cursor.Set(CursorKey, maxUpdated.Value.ToUniversalTime().ToString("o"));
-        }
-
-        logger.LogInformation(
-            "Jira sync wrote {Count} records ({Issues} issues) for project {Project}",
-            written, issueIds.Count, projectKey);
+        written += await FlushAsync(context, batch, CursorKey, maxUpdated, cancellationToken);
+        logger.LogInformation("Jira issue sync wrote {Count} for project {Project}", written, prep.Config.ProjectKey);
         return SyncResult.Ok(written);
     }
+
+    // "sprint": derive sprints from the Sprint field of issues already in bronze. No API call.
+    private async Task<SyncResult> SyncSprintsAsync(SyncContext context, JiraPrep prep, CancellationToken cancellationToken)
+    {
+        if (prep.SprintFieldId is null)
+        {
+            return SyncResult.Ok(0);
+        }
+
+        var since = ParseDate(context.Cursor.Get(SprintCursorKey));
+        var sprints = new Dictionary<string, JsonElement>();
+        DateTimeOffset? mark = null;
+
+        await foreach (var issue in context.Reader.ReadAsync(context.IntegrationId, "issue", since, cancellationToken))
+        {
+            using (var doc = JsonDocument.Parse(issue.Payload))
+            {
+                if (doc.RootElement.TryGetProperty("fields", out var fields))
+                {
+                    CollectSprints(fields, prep.SprintFieldId, sprints);
+                }
+            }
+
+            mark = issue.SourceUpdatedAt ?? mark;
+        }
+
+        var facts = BuildSprintFacts(sprints, prep.Config.SyncSince);
+        var written = facts.Count > 0
+            ? await context.Sink.WriteAsync(context.IntegrationId, facts, cancellationToken)
+            : 0;
+        if (mark is not null)
+        {
+            context.Cursor.Set(SprintCursorKey, mark.Value.ToUniversalTime().ToString("o"));
+        }
+
+        logger.LogInformation("Jira sprint sync wrote {Count} for project {Project}", written, prep.Config.ProjectKey);
+        return SyncResult.Ok(written);
+    }
+
+    // "issue_changelog": fetch the full changelog for each issue in bronze, keyed off its own cursor.
+    private async Task<SyncResult> SyncChangelogsAsync(SyncContext context, JiraPrep prep, CancellationToken cancellationToken)
+    {
+        var since = ParseDate(context.Cursor.Get(ChangelogCursorKey));
+        var batch = new List<RawFact>();
+        var written = 0;
+        DateTimeOffset? mark = null;
+
+        await foreach (var issue in context.Reader.ReadAsync(context.IntegrationId, "issue", since, cancellationToken))
+        {
+            batch.Add(await BuildChangelogFactAsync(prep.ApiRoot, issue.SourceId, prep.Email, prep.Token, cancellationToken));
+            mark = issue.SourceUpdatedAt ?? mark;
+
+            if (batch.Count >= BatchSize)
+            {
+                written += await FlushAsync(context, batch, ChangelogCursorKey, mark, cancellationToken);
+            }
+        }
+
+        written += await FlushAsync(context, batch, ChangelogCursorKey, mark, cancellationToken);
+        logger.LogInformation("Jira changelog sync wrote {Count} for project {Project}", written, prep.Config.ProjectKey);
+        return SyncResult.Ok(written);
+    }
+
+    // "issue_devlinks": PR/branch links per issue (classic tokens only; the endpoint is
+    // internal and not reachable via the scoped-token gateway). Best-effort.
+    private async Task<SyncResult> SyncDevLinksAsync(SyncContext context, JiraPrep prep, CancellationToken cancellationToken)
+    {
+        if (prep.Config.ScopedToken)
+        {
+            logger.LogInformation("Scoped-token mode: skipping dev-status PR links (not available via the API gateway)");
+            return SyncResult.Ok(0);
+        }
+
+        var since = ParseDate(context.Cursor.Get(DevLinksCursorKey));
+        var batch = new List<RawFact>();
+        var written = 0;
+        DateTimeOffset? mark = null;
+
+        await foreach (var issue in context.Reader.ReadAsync(context.IntegrationId, "issue", since, cancellationToken))
+        {
+            JsonElement? dev;
+            try
+            {
+                dev = await client.GetIssueDevLinksAsync(prep.ApiRoot, issue.SourceId, prep.Email, prep.Token, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // Unsupported endpoint / no dev-tools permission: treat as "no links" and stop,
+                // committing what we have rather than failing the whole entity.
+                logger.LogWarning(ex, "Jira dev-status unavailable; stopping dev-links for this run");
+                break;
+            }
+
+            if (dev is not null)
+            {
+                batch.Add(new RawFact(Source, "issue_devlinks", issue.SourceId, dev.Value.GetRawText(), DevLinksUpdatedAt(dev.Value)));
+            }
+
+            mark = issue.SourceUpdatedAt ?? mark;
+            if (batch.Count >= BatchSize)
+            {
+                written += await FlushAsync(context, batch, DevLinksCursorKey, mark, cancellationToken);
+            }
+        }
+
+        written += await FlushAsync(context, batch, DevLinksCursorKey, mark, cancellationToken);
+        return SyncResult.Ok(written);
+    }
+
+    // Writes the accumulated batch (if any) and advances the entity's cursor to the watermark,
+    // then clears the batch. Returns the number written.
+    private static async Task<int> FlushAsync(
+        SyncContext context, List<RawFact> batch, string cursorKey, DateTimeOffset? mark, CancellationToken cancellationToken)
+    {
+        if (batch.Count == 0)
+        {
+            if (mark is not null)
+            {
+                context.Cursor.Set(cursorKey, mark.Value.ToUniversalTime().ToString("o"));
+            }
+
+            return 0;
+        }
+
+        var written = await context.Sink.WriteAsync(context.IntegrationId, batch, cancellationToken);
+        if (mark is not null)
+        {
+            context.Cursor.Set(cursorKey, mark.Value.ToUniversalTime().ToString("o"));
+        }
+
+        batch.Clear();
+        return written;
+    }
+
+    private static string[] BuildFields(JiraPrep prep) =>
+        BaseFields
+            .Append(prep.StoryPointsFieldId)
+            .Append(prep.SprintFieldId)
+            .Where(f => !string.IsNullOrWhiteSpace(f))
+            .Select(f => f!)
+            .ToArray();
 
     private async Task<(string? StoryPoints, string? Sprint)> ResolveFieldIdsAsync(
         SyncContext context, string apiRoot, string email, string token, CancellationToken cancellationToken)

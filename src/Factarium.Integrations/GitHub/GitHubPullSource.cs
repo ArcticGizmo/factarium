@@ -7,9 +7,10 @@ using Microsoft.Extensions.Logging;
 namespace Factarium.Integrations.GitHub;
 
 /// <summary>
-/// Pull source for GitHub. Resolves repositories (from an org and/or an explicit
-/// list), then incrementally syncs pull requests (with reviews) and commits into
-/// the bronze tier, storing the raw GitHub JSON and advancing per-repo cursors.
+/// Pull source for GitHub. Runs three independent entities: "repository" (resolved
+/// from an org and/or explicit list), then "pull_request" (with reviews inline) and
+/// "commit", each fetched per repo from the repositories already replicated to bronze.
+/// Raw GitHub JSON is stored and per-repo cursors advance independently.
 /// </summary>
 public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullSource> logger) : IPullSource
 {
@@ -23,7 +24,19 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
 
     public string Type => Source;
 
-    public async Task<SyncResult> PullAsync(SyncContext context, CancellationToken cancellationToken)
+    // repository first: the PR and commit entities read their repo list from the
+    // repositories it replicates to bronze.
+    public IReadOnlyList<string> Entities { get; } = ["repository", "pull_request", "commit"];
+
+    public IReadOnlyList<string> CursorKeyPrefixesForEntity(string entityType) => entityType switch
+    {
+        // Reviews ride along with pull requests, so clearing the PR cursor re-fetches both.
+        "pull_request" or "review" => ["pulls:"],
+        "commit" => ["commits:"],
+        _ => [], // repository has no cursor (always resolved from config)
+    };
+
+    public async Task<SyncResult> PullEntityAsync(string entity, SyncContext context, CancellationToken cancellationToken)
     {
         if (context.Config is not GitHubSourceConfig config)
         {
@@ -31,17 +44,45 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
         }
 
         var token = context.Credential;
+        return entity switch
+        {
+            "repository" => await SyncRepositoriesAsync(context, config, token, cancellationToken),
+            "pull_request" => await ForEachRepositoryAsync(
+                context, token, cancellationToken, SyncPullRequestsAsync),
+            "commit" => await ForEachRepositoryAsync(
+                context, token, cancellationToken, SyncCommitsAsync),
+            _ => SyncResult.Ok(0),
+        };
+    }
+
+    private async Task<SyncResult> SyncRepositoriesAsync(
+        SyncContext context, GitHubSourceConfig config, string? token, CancellationToken cancellationToken)
+    {
         var (repositories, written) = await ResolveRepositoriesAsync(context, config, token, cancellationToken);
+        return repositories.Count == 0
+            ? SyncResult.Failed("No repositories resolved. Set an organization and/or specific repos.")
+            : SyncResult.Ok(written);
+    }
 
-        if (repositories.Count == 0)
+    // Runs a per-repo sync over the repositories already replicated to the bronze tier,
+    // so the PR/commit entities don't re-enumerate the org.
+    private async Task<SyncResult> ForEachRepositoryAsync(
+        SyncContext context,
+        string? token,
+        CancellationToken cancellationToken,
+        Func<SyncContext, string, string?, CancellationToken, Task<int>> syncRepo)
+    {
+        var written = 0;
+        await foreach (var repo in context.Reader.ReadAsync(context.IntegrationId, "repository", null, cancellationToken))
         {
-            return SyncResult.Failed("No repositories resolved. Set an organization and/or specific repos.");
-        }
-
-        foreach (var fullName in repositories)
-        {
-            written += await SyncPullRequestsAsync(context, fullName, token, cancellationToken);
-            written += await SyncCommitsAsync(context, fullName, token, cancellationToken);
+            using var doc = JsonDocument.Parse(repo.Payload);
+            var fullName = doc.RootElement.TryGetProperty("full_name", out var v) && v.ValueKind == JsonValueKind.String
+                ? v.GetString()
+                : null;
+            if (fullName is not null)
+            {
+                written += await syncRepo(context, fullName, token, cancellationToken);
+            }
         }
 
         return SyncResult.Ok(written);

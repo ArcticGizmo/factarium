@@ -1,11 +1,16 @@
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Factarium.Application.Sync;
 
 namespace Factarium.Tests.TestDoubles;
 
-/// <summary>Records everything written so tests can assert on the facts produced.</summary>
-internal sealed class RecordingRawRecordSink : IRawRecordSink
+/// <summary>
+/// In-memory bronze tier for tests: records everything written and reads it back, so
+/// dependent entities (e.g. issue_changelog reading issues) see what earlier entities
+/// wrote. Doubles as both the sink and the reader.
+/// </summary>
+internal sealed class RecordingRawRecordSink : IRawRecordSink, IRawRecordReader
 {
     public List<RawFact> Facts { get; } = [];
 
@@ -13,6 +18,36 @@ internal sealed class RecordingRawRecordSink : IRawRecordSink
     {
         Facts.AddRange(facts);
         return Task.FromResult(facts.Count);
+    }
+
+    public async IAsyncEnumerable<RawRecordRef> ReadAsync(
+        Guid integrationId,
+        string entityType,
+        DateTimeOffset? updatedAfter,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await Task.CompletedTask;
+        foreach (var fact in Facts
+                     .Where(f => f.EntityType == entityType && (updatedAfter is null || f.SourceUpdatedAt > updatedAfter))
+                     .OrderBy(f => f.SourceUpdatedAt))
+        {
+            yield return new RawRecordRef(fact.SourceId, fact.SourceUpdatedAt, fact.Payload);
+        }
+    }
+}
+
+/// <summary>Runs every entity of a pull source in order, like the orchestrator does.</summary>
+internal static class PullSourceRunner
+{
+    public static async Task<List<SyncResult>> RunAllAsync(IPullSource source, SyncContext context)
+    {
+        var results = new List<SyncResult>();
+        foreach (var entity in source.Entities)
+        {
+            results.Add(await source.PullEntityAsync(entity, context, CancellationToken.None));
+        }
+
+        return results;
     }
 }
 

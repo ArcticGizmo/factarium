@@ -10,6 +10,7 @@ internal sealed class PushIngestionService(
     FactariumDbContext db,
     IEnumerable<IPushSource> pushSources,
     IRawRecordSink sink,
+    IRawRecordReader reader,
     TimeProvider clock,
     ILogger<PushIngestionService> logger) : IPushIngestionService
 {
@@ -38,6 +39,7 @@ internal sealed class PushIngestionService(
             Config = null,
             Cursor = new DictionaryCursorStore(),
             Sink = sink,
+            Reader = reader,
         };
 
         var now = clock.GetUtcNow();

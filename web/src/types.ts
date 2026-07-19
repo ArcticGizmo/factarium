@@ -123,6 +123,10 @@ export interface Integration {
   lastRunRecordsWritten: number;
   nextRunAt: string | null;
   hasCredential: boolean;
+  // Entity types this integration can sync individually (empty for push-based types).
+  entities: string[];
+  // Newest record source-timestamp per entity type, for spotting stale data (null = none yet).
+  entityLatest: Record<string, string | null>;
   config: GitHubConfig | JiraConfig | null;
 }
 
@@ -189,6 +193,8 @@ export interface SyncRun {
   integrationId: string;
   integrationName: string;
   integrationType: string;
+  // The entity this run synced (e.g. "issue", "commit"); null for a pre-entity failure.
+  entityType: string | null;
   trigger: string;
   status: string;
   startedAt: string;

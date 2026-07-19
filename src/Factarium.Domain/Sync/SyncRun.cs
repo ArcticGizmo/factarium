@@ -20,6 +20,13 @@ public class SyncRun
     /// <summary>Integration type discriminator (e.g. "github") at run time.</summary>
     public required string IntegrationType { get; set; }
 
+    /// <summary>
+    /// The entity this run synced (e.g. "issue", "commit"). Each entity runs and is
+    /// recorded independently. Null only when a run failed before any entity ran (e.g.
+    /// no pull source is registered for the integration type).
+    /// </summary>
+    public string? EntityType { get; set; }
+
     /// <summary>Whether this run was fired by the schedule or triggered by hand.</summary>
     public SyncRunTrigger Trigger { get; set; }
 

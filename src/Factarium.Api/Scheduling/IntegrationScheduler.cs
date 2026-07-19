@@ -8,7 +8,10 @@ public interface IIntegrationScheduler
 {
     Task ScheduleAsync(Integration integration, CancellationToken cancellationToken);
     Task UnscheduleAsync(Guid integrationId, CancellationToken cancellationToken);
-    Task TriggerNowAsync(Guid integrationId, CancellationToken cancellationToken);
+
+    /// <summary>Fires a manual run. <paramref name="entity"/> null runs everything; otherwise just that entity.</summary>
+    Task TriggerNowAsync(Guid integrationId, string? entity, CancellationToken cancellationToken);
+
     Task<DateTimeOffset?> GetNextRunAsync(Guid integrationId, CancellationToken cancellationToken);
 }
 
@@ -35,13 +38,19 @@ internal sealed class QuartzIntegrationScheduler(ISchedulerFactory factory) : II
         }
     }
 
-    public async Task TriggerNowAsync(Guid integrationId, CancellationToken cancellationToken)
+    public async Task TriggerNowAsync(Guid integrationId, string? entity, CancellationToken cancellationToken)
     {
         var scheduler = await factory.GetScheduler(cancellationToken);
         await EnsureJobAsync(scheduler, integrationId, cancellationToken);
 
-        // Mark the fire as manual so the job records an adhoc (not scheduled) run.
+        // Mark the fire as manual so the job records an adhoc (not scheduled) run; carry
+        // the chosen entity, if any, so only that one runs.
         var data = new JobDataMap { { IntegrationSyncJob.ManualTriggerKey, "true" } };
+        if (!string.IsNullOrWhiteSpace(entity))
+        {
+            data[IntegrationSyncJob.EntityKey] = entity;
+        }
+
         await scheduler.TriggerJob(KeyFor(integrationId), data, cancellationToken);
     }
 

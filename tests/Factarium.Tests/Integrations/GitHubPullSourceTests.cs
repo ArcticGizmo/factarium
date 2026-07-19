@@ -14,9 +14,9 @@ public class GitHubPullSourceTests
         var (source, sink, cursor) = Build(out _);
         var context = Context(cursor, sink, initialPullCursor: null);
 
-        var result = await source.PullAsync(context, CancellationToken.None);
+        var results = await PullSourceRunner.RunAllAsync(source, context);
 
-        Assert.True(result.Succeeded);
+        Assert.All(results, r => Assert.True(r.Succeeded));
         Assert.Equal(1, sink.Facts.Count(f => f.EntityType == "repository"));
         Assert.Equal(2, sink.Facts.Count(f => f.EntityType == "pull_request"));
         Assert.Equal(1, sink.Facts.Count(f => f.EntityType == "review"));
@@ -139,7 +139,7 @@ public class GitHubPullSourceTests
         // Cursor already at the newest PR's updated_at: nothing new to pull.
         var context = Context(cursor, sink, initialPullCursor: "2026-07-10T00:00:00Z");
 
-        await source.PullAsync(context, CancellationToken.None);
+        await PullSourceRunner.RunAllAsync(source, context);
 
         Assert.DoesNotContain(sink.Facts, f => f.EntityType == "pull_request");
         Assert.DoesNotContain(sink.Facts, f => f.EntityType == "review");
@@ -170,6 +170,7 @@ public class GitHubPullSourceTests
             Config = new GitHubSourceConfig(Org: null, Repos: ["acme/repo1"]),
             Cursor = cursor,
             Sink = sink,
+            Reader = sink,
         };
     }
 

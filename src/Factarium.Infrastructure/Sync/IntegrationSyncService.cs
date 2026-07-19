@@ -8,115 +8,185 @@ using Microsoft.Extensions.Logging;
 
 namespace Factarium.Infrastructure.Sync;
 
+/// <summary>
+/// Runs an integration sync as a sequence of independent per-entity units. Each entity
+/// gets its own <see cref="SyncRun"/> history row, commits and advances its own cursor
+/// on its own, and a failure in one entity never rolls back another's records. The
+/// connection's own last-run fields hold an aggregate across the entities.
+/// </summary>
 internal sealed class IntegrationSyncService(
     FactariumDbContext db,
     IEnumerable<IPullSource> pullSources,
     IRawRecordSink sink,
+    IRawRecordReader reader,
     ICredentialProtector protector,
     TimeProvider clock,
     ILogger<IntegrationSyncService> logger) : IIntegrationSyncService
 {
-    public async Task<SyncResult> RunAsync(Guid integrationId, SyncRunTrigger trigger, CancellationToken cancellationToken)
+    public async Task<SyncResult> RunAsync(
+        Guid integrationId, SyncRunTrigger trigger, string? entity, CancellationToken cancellationToken)
     {
         var integration = await db.Integrations
             .FirstOrDefaultAsync(i => i.Id == integrationId, cancellationToken)
             ?? throw new InvalidOperationException($"Integration {integrationId} not found.");
 
-        // Open a history row and mark the connection running up front, so the run is
-        // visible while it executes and even the misconfigured paths below are recorded.
+        var source = pullSources.FirstOrDefault(
+            s => string.Equals(s.Type, integration.Type, StringComparison.OrdinalIgnoreCase));
+
         var startedAt = clock.GetUtcNow();
-        var run = new SyncRun
+        integration.LastRunStartedAt = startedAt;
+        integration.LastRunStatus = SyncRunStatus.Running;
+        integration.LastRunError = null;
+        integration.LastRunCompletedAt = null;
+        await db.SaveChangesAsync(cancellationToken);
+
+        if (source is null)
+        {
+            // No connector for this type (e.g. a push-based integration triggered by hand):
+            // record a single failed run with no entity, mirror it onto the connection.
+            return await RecordSingleFailureAsync(
+                integration, entity, trigger, startedAt,
+                $"No pull source registered for type '{integration.Type}'.", cancellationToken);
+        }
+
+        // A specific entity was requested: run only that one (rejecting an unknown name).
+        IReadOnlyList<string> entities = source.Entities;
+        if (entity is not null)
+        {
+            var match = source.Entities.FirstOrDefault(e => string.Equals(e, entity, StringComparison.OrdinalIgnoreCase));
+            if (match is null)
+            {
+                return await RecordSingleFailureAsync(
+                    integration, entity, trigger, startedAt,
+                    $"Unknown entity '{entity}' for integration type '{integration.Type}'.", cancellationToken);
+            }
+
+            entities = [match];
+        }
+
+        var cursor = new DictionaryCursorStore(ParseDictionary(integration.CursorState));
+        var credential = integration.EncryptedCredential is null
+            ? null
+            : protector.Unprotect(integration.EncryptedCredential);
+
+        var context = new SyncContext
+        {
+            IntegrationId = integration.Id,
+            IntegrationName = integration.Name,
+            Credential = credential,
+            Config = BuildConfig(integration),
+            Cursor = cursor,
+            Sink = sink,
+            Reader = reader,
+        };
+
+        logger.LogInformation(
+            "Starting sync for {Name} ({Type}): {Count} entities",
+            integration.Name, integration.Type, entities.Count);
+
+        var totalRecords = 0;
+        var anyFailed = false;
+        string? firstError = null;
+        var lastCompleted = startedAt;
+
+        foreach (var entityName in entities)
+        {
+            var run = NewRun(integration, entityName, trigger, clock.GetUtcNow());
+            db.SyncRuns.Add(run);
+            await db.SaveChangesAsync(cancellationToken); // visible as Running while it executes
+
+            SyncResult result;
+            try
+            {
+                result = await source.PullEntityAsync(entityName, context, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Sync entity {Entity} failed for {Name}", entityName, integration.Name);
+                result = SyncResult.Failed(ex.Message);
+            }
+
+            lastCompleted = clock.GetUtcNow();
+            Stamp(run, result, lastCompleted);
+
+            // Persist this entity's cursor progress now, so a later entity's failure
+            // can't undo it.
+            if (cursor.Dirty)
+            {
+                integration.CursorState = JsonSerializer.Serialize(cursor.Snapshot());
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+
+            totalRecords += result.RecordsWritten;
+            if (!result.Succeeded)
+            {
+                anyFailed = true;
+                firstError ??= result.Error;
+            }
+        }
+
+        SetAggregate(integration, anyFailed, totalRecords, firstError, startedAt, lastCompleted);
+        await db.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Sync for {Name} finished: {Status}, {Records} records across {Count} entities",
+            integration.Name, integration.LastRunStatus, totalRecords, entities.Count);
+
+        return anyFailed ? SyncResult.Failed(firstError ?? "One or more entities failed.", totalRecords) : SyncResult.Ok(totalRecords);
+    }
+
+    // Records a single failed run (with the given entity label) and mirrors it onto the
+    // connection's aggregate — used for "no pull source" and "unknown entity".
+    private async Task<SyncResult> RecordSingleFailureAsync(
+        Integration integration,
+        string? entity,
+        SyncRunTrigger trigger,
+        DateTimeOffset startedAt,
+        string error,
+        CancellationToken cancellationToken)
+    {
+        var run = NewRun(integration, entity, trigger, startedAt);
+        db.SyncRuns.Add(run);
+        Stamp(run, SyncResult.Failed(error), clock.GetUtcNow());
+        SetAggregate(integration, anyFailed: true, records: 0, firstError: error, startedAt, run.CompletedAt!.Value);
+        await db.SaveChangesAsync(cancellationToken);
+        return SyncResult.Failed(error);
+    }
+
+    private SyncRun NewRun(Integration integration, string? entity, SyncRunTrigger trigger, DateTimeOffset startedAt) =>
+        new()
         {
             IntegrationId = integration.Id,
             IntegrationName = integration.Name,
             IntegrationType = integration.Type,
+            EntityType = entity,
             Trigger = trigger,
             Status = SyncRunStatus.Running,
             StartedAt = startedAt,
         };
-        db.SyncRuns.Add(run);
 
-        integration.LastRunStartedAt = startedAt;
-        integration.LastRunStatus = SyncRunStatus.Running;
-        integration.LastRunError = null;
-        await db.SaveChangesAsync(cancellationToken);
-
-        var source = pullSources.FirstOrDefault(
-            s => string.Equals(s.Type, integration.Type, StringComparison.OrdinalIgnoreCase));
-
-        if (source is null)
-        {
-            return await FinishAsync(
-                integration,
-                run,
-                SyncResult.Failed($"No pull source registered for type '{integration.Type}'."),
-                cursor: null,
-                cancellationToken);
-        }
-
-        var cursor = new DictionaryCursorStore(ParseDictionary(integration.CursorState));
-        SyncResult result;
-        try
-        {
-            var credential = integration.EncryptedCredential is null
-                ? null
-                : protector.Unprotect(integration.EncryptedCredential);
-
-            var context = new SyncContext
-            {
-                IntegrationId = integration.Id,
-                IntegrationName = integration.Name,
-                Credential = credential,
-                Config = BuildConfig(integration),
-                Cursor = cursor,
-                Sink = sink,
-            };
-
-            logger.LogInformation("Starting sync for integration {Name} ({Type})", integration.Name, integration.Type);
-            result = await source.PullAsync(context, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Sync failed for integration {Name}", integration.Name);
-            result = SyncResult.Failed(ex.Message);
-        }
-
-        return await FinishAsync(integration, run, result, cursor, cancellationToken);
-    }
-
-    private async Task<SyncResult> FinishAsync(
-        Integration integration,
-        SyncRun run,
-        SyncResult result,
-        DictionaryCursorStore? cursor,
-        CancellationToken cancellationToken)
+    private static void Stamp(SyncRun run, SyncResult result, DateTimeOffset completedAt)
     {
-        if (cursor is { Dirty: true })
-        {
-            integration.CursorState = JsonSerializer.Serialize(cursor.Snapshot());
-        }
-
-        var completedAt = clock.GetUtcNow();
-        var status = result.Succeeded ? SyncRunStatus.Success : SyncRunStatus.Failed;
-
-        // Stamp the history row and mirror the outcome onto the connection's latest-run fields.
         run.CompletedAt = completedAt;
         run.RecordsWritten = result.RecordsWritten;
-        run.Status = status;
+        run.Status = result.Succeeded ? SyncRunStatus.Success : SyncRunStatus.Failed;
         run.Error = result.Error;
+    }
 
+    private static void SetAggregate(
+        Integration integration,
+        bool anyFailed,
+        int records,
+        string? firstError,
+        DateTimeOffset startedAt,
+        DateTimeOffset completedAt)
+    {
+        integration.LastRunStartedAt = startedAt;
         integration.LastRunCompletedAt = completedAt;
-        integration.LastRunRecordsWritten = result.RecordsWritten;
-        integration.LastRunStatus = status;
-        integration.LastRunError = result.Error;
-
-        await db.SaveChangesAsync(cancellationToken);
-
-        logger.LogInformation(
-            "Sync for {Name} finished: {Status}, {Records} records",
-            integration.Name, integration.LastRunStatus, result.RecordsWritten);
-
-        return result;
+        integration.LastRunStatus = anyFailed ? SyncRunStatus.Failed : SyncRunStatus.Success;
+        integration.LastRunRecordsWritten = records;
+        integration.LastRunError = firstError;
     }
 
     private static SourceConfig? BuildConfig(Integration integration) => integration switch

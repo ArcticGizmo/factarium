@@ -17,6 +17,7 @@
       <thead>
         <tr>
           <th>Repository</th>
+          <th v-for="e in entityColumns" :key="e" class="entity-col">{{ e }}</th>
           <th>Enabled</th>
           <th>Schedule</th>
           <th>Last run</th>
@@ -26,10 +27,15 @@
       </thead>
       <tbody>
         <tr v-if="integrations.length === 0">
-          <td colspan="6" class="text-medium-emphasis text-caption py-4">No repositories connected yet.</td>
+          <td :colspan="6 + entityColumns.length" class="text-medium-emphasis text-caption py-4">
+            No repositories connected yet.
+          </td>
         </tr>
         <tr v-for="i in integrations" :key="i.id">
           <td>{{ repoLabel(i) }}</td>
+          <td v-for="e in entityColumns" :key="e" class="text-caption entity-col" :title="fmt(i.entityLatest[e])">
+            {{ formatRelative(i.entityLatest[e]) }}
+          </td>
           <td>
             <v-chip :color="i.enabled ? 'green' : 'grey'" size="x-small" variant="flat">
               {{ i.enabled ? 'on' : 'off' }}
@@ -49,7 +55,7 @@
               <v-btn size="x-small" variant="text" :to="{ name: 'integration-records', params: { id: i.id } }">
                 View records
               </v-btn>
-              <v-btn size="x-small" variant="text" @click="syncNow(i.id)">Sync</v-btn>
+              <SyncMenu :integration="i" @synced="load" />
               <v-btn size="x-small" variant="text" color="red" @click="remove(i.id)">Delete</v-btn>
             </div>
           </td>
@@ -62,15 +68,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import BasePage from '../../components/BasePage.vue';
 import GitHubIntegrationDialog from './GitHubIntegrationDialog.vue';
+import SyncMenu from './SyncMenu.vue';
 import type { Integration, GitHubConfig } from '../../types';
 import { useIntegrations } from './useIntegrations';
-import { formatDateTime as fmt } from '../../utils/datetime';
+import { formatDateTime as fmt, formatRelative } from '../../utils/datetime';
 import { api } from '../../api';
 
 const { integrations, error, load } = useIntegrations('github');
+
+// Entity types are the same across a type's connections; take them from the first row.
+const entityColumns = computed(() => integrations.value[0]?.entities ?? []);
 
 const dialog = ref(false);
 const editing = ref<Integration | null>(null);
@@ -83,11 +93,6 @@ function openCreate() {
 function openEdit(i: Integration) {
   editing.value = i;
   dialog.value = true;
-}
-
-async function syncNow(id: string) {
-  await api.url(`/integrations/${id}/sync`).post().res();
-  setTimeout(load, 1500);
 }
 
 async function remove(id: string) {
@@ -109,3 +114,11 @@ const statusColor: Record<string, string> = {
 
 onMounted(load);
 </script>
+
+<style scoped>
+/* Compact freshness columns so several fit without dominating the row. */
+.entity-col {
+  white-space: nowrap;
+  font-size: 0.75rem;
+}
+</style>

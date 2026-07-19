@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Factarium.Api.Scheduling;
 using Factarium.Application.Security;
+using Factarium.Application.Sync;
 using Factarium.Domain.Sync;
 using Factarium.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -61,13 +62,33 @@ public static class IntegrationEndpoints
     {
         var group = app.MapGroup("/api/integrations");
 
-        group.MapGet("", async (FactariumDbContext db, IIntegrationScheduler scheduler, CancellationToken ct) =>
+        group.MapGet("", async (
+            FactariumDbContext db,
+            IIntegrationScheduler scheduler,
+            IEnumerable<IPullSource> pullSources,
+            CancellationToken ct) =>
         {
             var integrations = await db.Integrations.OrderBy(i => i.Name).ToListAsync(ct);
+
+            // Newest source timestamp per (integration, entity), so the UI can flag stale data.
+            var freshness = await db.RawRecords
+                .GroupBy(r => new { r.IntegrationId, r.EntityType })
+                .Select(g => new { g.Key.IntegrationId, g.Key.EntityType, Latest = g.Max(r => r.SourceUpdatedAt) })
+                .ToListAsync(ct);
+            var latestByIntegration = freshness
+                .GroupBy(f => f.IntegrationId)
+                .ToDictionary(g => g.Key, g => g.ToDictionary(x => x.EntityType, x => x.Latest));
 
             var result = new List<object>(integrations.Count);
             foreach (var i in integrations)
             {
+                // The entities this integration can sync individually (empty for push-based types).
+                var entities = pullSources
+                    .FirstOrDefault(s => string.Equals(s.Type, i.Type, StringComparison.OrdinalIgnoreCase))
+                    ?.Entities ?? [];
+
+                var entityLatest = latestByIntegration.GetValueOrDefault(i.Id) ?? [];
+
                 result.Add(new
                 {
                     i.Id,
@@ -82,6 +103,8 @@ public static class IntegrationEndpoints
                     i.LastRunRecordsWritten,
                     NextRunAt = await scheduler.GetNextRunAsync(i.Id, ct),
                     HasCredential = i.EncryptedCredential is not null,
+                    Entities = entities,
+                    EntityLatest = entityLatest,
                     Config = ConfigFor(i),
                 });
             }
@@ -364,15 +387,67 @@ public static class IntegrationEndpoints
             return Results.Ok(new { Total = total, Page = pageNumber, PageSize = size, Records = result });
         });
 
+        // Purge all bronze records of one entity type, and reset that entity's sync cursor
+        // so a subsequent sync re-replicates it from scratch.
+        group.MapDelete("{id:guid}/records", async (
+            Guid id,
+            string? entityType,
+            FactariumDbContext db,
+            IEnumerable<IPullSource> pullSources,
+            CancellationToken ct) =>
+        {
+            var integration = await db.Integrations.FindAsync([id], ct);
+            if (integration is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (string.IsNullOrWhiteSpace(entityType))
+            {
+                return Results.BadRequest("entityType is required.");
+            }
+
+            // Reset the cursor keys that drive re-replication of this entity (best-effort:
+            // no source / no cursor just means nothing to reset).
+            var prefixes = pullSources
+                .FirstOrDefault(s => string.Equals(s.Type, integration.Type, StringComparison.OrdinalIgnoreCase))
+                ?.CursorKeyPrefixesForEntity(entityType) ?? [];
+            if (prefixes.Count > 0 && !string.IsNullOrWhiteSpace(integration.CursorState))
+            {
+                var cursor = JsonSerializer.Deserialize<Dictionary<string, string?>>(integration.CursorState)
+                             ?? new Dictionary<string, string?>();
+                var stale = cursor.Keys
+                    .Where(k => prefixes.Any(p => k.StartsWith(p, StringComparison.Ordinal)))
+                    .ToList();
+                if (stale.Count > 0)
+                {
+                    foreach (var key in stale)
+                    {
+                        cursor.Remove(key);
+                    }
+
+                    integration.CursorState = JsonSerializer.Serialize(cursor);
+                    await db.SaveChangesAsync(ct);
+                }
+            }
+
+            var deleted = await db.RawRecords
+                .Where(r => r.IntegrationId == id && r.EntityType == entityType)
+                .ExecuteDeleteAsync(ct);
+
+            return Results.Ok(new { Deleted = deleted });
+        });
+
         group.MapPost("{id:guid}/sync", async (
-            Guid id, FactariumDbContext db, IIntegrationScheduler scheduler, CancellationToken ct) =>
+            Guid id, string? entity, FactariumDbContext db, IIntegrationScheduler scheduler, CancellationToken ct) =>
         {
             if (!await db.Integrations.AnyAsync(i => i.Id == id, ct))
             {
                 return Results.NotFound();
             }
 
-            await scheduler.TriggerNowAsync(id, ct);
+            // entity null/blank => run everything; otherwise just that entity.
+            await scheduler.TriggerNowAsync(id, Blank(entity), ct);
             return Results.Accepted($"/api/integrations/{id}");
         });
 

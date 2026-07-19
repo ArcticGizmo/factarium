@@ -31,11 +31,12 @@ public class JiraPullSourceTests
                 ScopedToken: false),
             Cursor = cursor,
             Sink = sink,
+            Reader = sink,
         };
 
-        var result = await source.PullAsync(context, CancellationToken.None);
+        var results = await PullSourceRunner.RunAllAsync(source, context);
 
-        Assert.True(result.Succeeded);
+        Assert.All(results, r => Assert.True(r.Succeeded));
 
         // One fact per bronze entity type.
         Assert.Equal(2, sink.Facts.Count(f => f.EntityType == "issue"));
@@ -84,9 +85,10 @@ public class JiraPullSourceTests
                 BaseUrl: null, Email: null, ProjectKey: null, SyncSince: null, ScopedToken: false),
             Cursor = new InMemoryCursorStore(),
             Sink = new RecordingRawRecordSink(),
+            Reader = new RecordingRawRecordSink(),
         };
 
-        var result = await source.PullAsync(context, CancellationToken.None);
+        var result = await source.PullEntityAsync("issue", context, CancellationToken.None);
 
         Assert.False(result.Succeeded);
     }
@@ -114,11 +116,12 @@ public class JiraPullSourceTests
                 ScopedToken: true),
             Cursor = cursor,
             Sink = sink,
+            Reader = sink,
         };
 
-        var result = await source.PullAsync(context, CancellationToken.None);
+        var results = await PullSourceRunner.RunAllAsync(source, context);
 
-        Assert.True(result.Succeeded);
+        Assert.All(results, r => Assert.True(r.Succeeded));
         // Cloud id resolved from the site and cached; issue/search calls hit the gateway.
         Assert.Contains(handler.Requests, r => r.EndsWith("/_edge/tenant_info"));
         Assert.Contains(handler.Requests, r => r.StartsWith("https://api.atlassian.com/ex/jira/cloud-123/rest/api/3/search/jql"));
@@ -128,6 +131,61 @@ public class JiraPullSourceTests
         Assert.DoesNotContain(sink.Facts, f => f.EntityType == "issue_devlinks");
         Assert.Single(sink.Facts, f => f.EntityType == "issue");
     }
+
+    [Fact]
+    public async Task Failing_entity_does_not_discard_a_committed_entity()
+    {
+        var handler = new StubHttpMessageHandler(IsolationRespond);
+        var http = new HttpClient(handler);
+        var client = new JiraApiClient(http, TimeProvider.System, NullLogger<JiraApiClient>.Instance);
+        var source = new JiraPullSource(client, NullLogger<JiraPullSource>.Instance);
+
+        var sink = new RecordingRawRecordSink();
+        var cursor = new InMemoryCursorStore();
+        var context = new SyncContext
+        {
+            IntegrationId = Guid.NewGuid(),
+            IntegrationName = "jira",
+            Credential = "api-token",
+            Config = new JiraSourceConfig(
+                BaseUrl: "https://acme.atlassian.net",
+                Email: "dev@example.com",
+                ProjectKey: "QAI",
+                SyncSince: null,
+                ScopedToken: false),
+            Cursor = cursor,
+            Sink = sink,
+            Reader = sink,
+        };
+
+        // The issue entity commits its records and advances its own cursor.
+        var issueResult = await source.PullEntityAsync("issue", context, CancellationToken.None);
+        Assert.True(issueResult.Succeeded);
+        Assert.Contains(sink.Facts, f => f.EntityType == "issue");
+        Assert.NotNull(cursor.Get("issues:updated"));
+
+        // The changelog entity then fails — but the issue records and cursor are untouched.
+        await Assert.ThrowsAnyAsync<Exception>(
+            () => source.PullEntityAsync("issue_changelog", context, CancellationToken.None));
+        Assert.Contains(sink.Facts, f => f.EntityType == "issue");
+        Assert.NotNull(cursor.Get("issues:updated"));
+        Assert.DoesNotContain(sink.Facts, f => f.EntityType == "issue_changelog");
+    }
+
+    private static HttpResponseMessage IsolationRespond(HttpRequestMessage request) =>
+        request.RequestUri!.AbsolutePath switch
+        {
+            "/rest/api/3/field" => StubHttpMessageHandler.Json(
+                """[ { "id": "customfield_10016", "name": "Story Points" } ]"""),
+            "/rest/api/3/search/jql" => StubHttpMessageHandler.Json(
+                """
+                { "issues": [ { "id": "3001", "key": "QAI-3",
+                  "fields": { "updated": "2026-07-12T09:00:00.000+0000" } } ] }
+                """),
+            // Changelog fails: the entity throws, but must not roll back the issue entity.
+            "/rest/api/3/issue/3001/changelog" => StubHttpMessageHandler.NotFound(),
+            _ => StubHttpMessageHandler.NotFound(),
+        };
 
     private static HttpResponseMessage ScopedRespond(HttpRequestMessage request)
     {
