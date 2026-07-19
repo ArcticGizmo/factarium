@@ -55,6 +55,7 @@ import BasePage from '../../components/BasePage.vue';
 import type { Integration } from '../../types';
 import { useIntegrations } from './useIntegrations';
 import { formatDateTime as fmt } from '../../utils/datetime';
+import { api } from '../../api';
 
 const { integrations, error, load } = useIntegrations('claude-code');
 
@@ -69,16 +70,12 @@ const setupSnippet = computed(() => {
 });
 
 async function save(row: Integration) {
-  await fetch(`/api/integrations/${row.id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled: row.enabled, cron: null })
-  });
+  await api.url(`/integrations/${row.id}`).json({ enabled: row.enabled, cron: null }).put().res();
   await load();
 }
 
 async function remove(id: string) {
-  await fetch(`/api/integrations/${id}`, { method: 'DELETE' });
+  await api.url(`/integrations/${id}`).delete().res();
   await load();
 }
 

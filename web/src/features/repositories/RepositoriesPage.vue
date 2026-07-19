@@ -42,6 +42,7 @@ import VChart from 'vue-echarts';
 import BasePage from '../../components/BasePage.vue';
 import { lineOption, barOption } from '../../charts';
 import type { RepoActivityData } from '../../types';
+import { api } from '../../api';
 
 const data = ref<RepoActivityData | null>(null);
 const error = ref<string | null>(null);
@@ -51,7 +52,7 @@ async function load() {
   loading.value = true;
   error.value = null;
   try {
-    data.value = await fetch('/api/dashboards/repo-activity').then((r) => r.json());
+    data.value = await api.url('/dashboards/repo-activity').get().json<RepoActivityData>();
   } catch (e) {
     error.value = String(e);
   } finally {

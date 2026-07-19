@@ -76,6 +76,7 @@
 import { reactive, ref, computed, watch } from 'vue';
 import CronField from '../../components/CronField.vue';
 import type { Integration, GitHubConfig } from '../../types';
+import { api } from '../../api';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -102,9 +103,7 @@ const credentialHint = computed(() =>
     : 'GitHub → Settings → Developer settings → Personal access tokens (repo read scope). Stored encrypted.'
 );
 
-const canSave = computed(() =>
-  isEdit.value ? form.repo.trim().length > 0 : form.repos.length > 0
-);
+const canSave = computed(() => (isEdit.value ? form.repo.trim().length > 0 : form.repos.length > 0));
 
 // Reset the form each time the dialog opens (prefilled in edit mode).
 watch(
@@ -138,10 +137,10 @@ async function save() {
   try {
     if (isEdit.value && props.integration) {
       const repo = form.repo.trim();
-      const res = await fetch(`/api/integrations/github/${props.integration.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // wretch rejects on non-2xx with the response body as the error message.
+      await api
+        .url(`/integrations/github/${props.integration.id}`)
+        .json({
           name: repo,
           cron: form.cron || null,
           enabled: form.enabled,
@@ -149,25 +148,28 @@ async function save() {
           repos: [repo],
           credential: form.credential || null
         })
-      });
-      if (!res.ok) throw new Error(await res.text());
+        .put()
+        .res();
     } else {
       // Fan out: one integration per repo so each is managed on its own row.
       const failures: string[] = [];
       for (const repo of form.repos.map((r) => r.trim()).filter(Boolean)) {
-        const res = await fetch('/api/integrations/github', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: repo,
-            cron: form.cron || null,
-            enabled: form.enabled,
-            org: null,
-            repos: [repo],
-            credential: form.credential || null
-          })
-        });
-        if (!res.ok) failures.push(repo);
+        try {
+          await api
+            .url('/integrations/github')
+            .json({
+              name: repo,
+              cron: form.cron || null,
+              enabled: form.enabled,
+              org: null,
+              repos: [repo],
+              credential: form.credential || null
+            })
+            .post()
+            .res();
+        } catch {
+          failures.push(repo);
+        }
       }
       if (failures.length > 0) {
         throw new Error(`Could not add: ${failures.join(', ')} (already connected?)`);

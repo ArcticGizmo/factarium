@@ -46,11 +46,7 @@
           <td>
             <div class="d-flex ga-1">
               <v-btn size="x-small" variant="tonal" color="primary" @click="openEdit(i)">Edit</v-btn>
-              <v-btn
-                size="x-small"
-                variant="text"
-                :to="{ name: 'integration-records', params: { id: i.id } }"
-              >
+              <v-btn size="x-small" variant="text" :to="{ name: 'integration-records', params: { id: i.id } }">
                 View records
               </v-btn>
               <v-btn size="x-small" variant="text" @click="syncNow(i.id)">Sync</v-btn>
@@ -72,6 +68,7 @@ import GitHubIntegrationDialog from './GitHubIntegrationDialog.vue';
 import type { Integration, GitHubConfig } from '../../types';
 import { useIntegrations } from './useIntegrations';
 import { formatDateTime as fmt } from '../../utils/datetime';
+import { api } from '../../api';
 
 const { integrations, error, load } = useIntegrations('github');
 
@@ -89,12 +86,12 @@ function openEdit(i: Integration) {
 }
 
 async function syncNow(id: string) {
-  await fetch(`/api/integrations/${id}/sync`, { method: 'POST' });
+  await api.url(`/integrations/${id}/sync`).post().res();
   setTimeout(load, 1500);
 }
 
 async function remove(id: string) {
-  await fetch(`/api/integrations/${id}`, { method: 'DELETE' });
+  await api.url(`/integrations/${id}`).delete().res();
   await load();
 }
 

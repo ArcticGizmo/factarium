@@ -44,6 +44,7 @@
 import { ref, onMounted } from 'vue';
 import NavItem from './components/NavItem.vue';
 import NavGroup from './components/NavGroup.vue';
+import { api } from './api';
 
 const health = ref<{ status: string; database: string } | null>(null);
 const me = ref<{ displayName: string } | null>(null);
@@ -52,8 +53,8 @@ const error = ref<string | null>(null);
 async function load() {
   try {
     const [h, m] = await Promise.all([
-      fetch('/api/health').then((r) => r.json()),
-      fetch('/api/me').then((r) => r.json())
+      api.url('/health').get().json<{ status: string; database: string }>(),
+      api.url('/me').get().json<{ displayName: string }>()
     ]);
     health.value = h;
     me.value = m;

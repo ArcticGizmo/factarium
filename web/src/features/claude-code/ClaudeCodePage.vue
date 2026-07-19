@@ -42,6 +42,7 @@ import VChart from 'vue-echarts';
 import BasePage from '../../components/BasePage.vue';
 import { lineOption, barOption } from '../../charts';
 import type { ClaudeCodeData } from '../../types';
+import { api } from '../../api';
 
 const data = ref<ClaudeCodeData | null>(null);
 const error = ref<string | null>(null);
@@ -51,7 +52,7 @@ async function load() {
   loading.value = true;
   error.value = null;
   try {
-    data.value = await fetch('/api/dashboards/claude-code').then((r) => r.json());
+    data.value = await api.url('/dashboards/claude-code').get().json<ClaudeCodeData>();
   } catch (e) {
     error.value = String(e);
   } finally {

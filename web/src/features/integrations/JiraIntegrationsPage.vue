@@ -89,9 +89,7 @@
             />
           </v-col>
           <v-col cols="12" sm="4" class="d-flex align-center pt-2">
-            <v-btn color="primary" variant="tonal" :disabled="!form.name" @click="create">
-              Create connection
-            </v-btn>
+            <v-btn color="primary" variant="tonal" :disabled="!form.name" @click="create"> Create connection </v-btn>
           </v-col>
         </v-row>
       </div>
@@ -106,6 +104,7 @@ import { reactive, onMounted } from 'vue';
 import BasePage from '../../components/BasePage.vue';
 import IntegrationsTable from './IntegrationsTable.vue';
 import { useIntegrations, splitCsv } from './useIntegrations';
+import { api } from '../../api';
 
 const { integrations, error, load } = useIntegrations('jira');
 
@@ -120,10 +119,9 @@ const form = reactive({
 });
 
 async function create() {
-  await fetch('/api/integrations/jira', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  await api
+    .url('/integrations/jira')
+    .json({
       name: form.name,
       cron: form.cron || null,
       enabled: !!form.cron,
@@ -133,7 +131,8 @@ async function create() {
       jql: null,
       credential: form.credential || null
     })
-  });
+    .post()
+    .res();
   Object.assign(form, {
     show: false,
     name: '',

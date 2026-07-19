@@ -42,6 +42,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import BasePage from '../../components/BasePage.vue';
 import type { LiveSummary } from '../../types';
 import { formatDateTime } from '../../utils/datetime';
+import { api } from '../../api';
 
 const data = ref<LiveSummary | null>(null);
 const error = ref<string | null>(null);
@@ -49,7 +50,7 @@ let timer: ReturnType<typeof setInterval> | undefined;
 
 async function load() {
   try {
-    data.value = await fetch('/api/live/summary').then((r) => r.json());
+    data.value = await api.url('/live/summary').get().json<LiveSummary>();
     error.value = null;
   } catch (e) {
     error.value = String(e);

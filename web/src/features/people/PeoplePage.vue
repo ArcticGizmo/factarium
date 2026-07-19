@@ -60,6 +60,7 @@
 import { ref, onMounted } from 'vue';
 import BasePage from '../../components/BasePage.vue';
 import type { Identity, Person } from '../../types';
+import { api } from '../../api';
 
 const emit = defineEmits(['changed']);
 
@@ -73,8 +74,8 @@ async function load() {
   error.value = null;
   try {
     [identities.value, people.value] = await Promise.all([
-      fetch('/api/identities').then((r) => r.json()),
-      fetch('/api/people').then((r) => r.json())
+      api.url('/identities').get().json<Identity[]>(),
+      api.url('/people').get().json<Person[]>()
     ]);
   } catch (e) {
     error.value = String(e);
@@ -84,11 +85,7 @@ async function load() {
 async function createPerson() {
   const name = newPersonName.value.trim();
   if (!name) return;
-  await fetch('/api/people', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ displayName: name })
-  });
+  await api.url('/people').json({ displayName: name }).post().res();
   newPersonName.value = '';
   await load();
 }
@@ -96,16 +93,12 @@ async function createPerson() {
 async function link(identityId: number) {
   const personId = selectedPerson.value[identityId];
   if (!personId) return;
-  await fetch(`/api/identities/${identityId}/link`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ personId })
-  });
+  await api.url(`/identities/${identityId}/link`).json({ personId }).post().res();
   await afterChange();
 }
 
 async function unlink(identityId: number) {
-  await fetch(`/api/identities/${identityId}/unlink`, { method: 'POST' });
+  await api.url(`/identities/${identityId}/unlink`).post().res();
   await afterChange();
 }
 

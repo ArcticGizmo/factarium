@@ -24,13 +24,7 @@
 
     <div class="section-title">Steps</div>
     <div class="d-flex align-center flex-wrap ga-2 mb-4">
-      <v-chip
-        v-for="s in steps"
-        :key="s.name"
-        :color="statusColor[s.lastStatus] || 'grey'"
-        variant="flat"
-        size="small"
-      >
+      <v-chip v-for="s in steps" :key="s.name" :color="statusColor[s.lastStatus] || 'grey'" variant="flat" size="small">
         {{ s.name }} · {{ s.lastStatus }} · {{ s.lastItemsProcessed }} @ {{ fmt(s.lastRunAt) }}
       </v-chip>
       <span v-if="steps.length === 0" class="text-caption text-medium-emphasis">No runs yet.</span>
@@ -46,6 +40,7 @@ import { ref, onMounted } from 'vue';
 import BasePage from '../../components/BasePage.vue';
 import type { PipelineStep } from '../../types';
 import { formatDateTime as fmt } from '../../utils/datetime';
+import { api } from '../../api';
 
 const steps = ref<PipelineStep[]>([]);
 const error = ref<string | null>(null);
@@ -54,7 +49,7 @@ const isDev = ref(false);
 
 async function load() {
   try {
-    steps.value = await fetch('/api/pipeline').then((r) => r.json());
+    steps.value = await api.url('/pipeline').get().json<PipelineStep[]>();
     error.value = null;
   } catch (e) {
     error.value = String(e);
@@ -64,7 +59,7 @@ async function load() {
 async function runPipeline() {
   busy.value = true;
   try {
-    await fetch('/api/pipeline/run', { method: 'POST' });
+    await api.url('/pipeline/run').post().res();
     await load();
   } finally {
     busy.value = false;
@@ -81,7 +76,7 @@ async function resetDatabase() {
   }
   busy.value = true;
   try {
-    await fetch('/api/debug/reset', { method: 'POST' });
+    await api.url('/debug/reset').post().res();
     await load();
   } finally {
     busy.value = false;
@@ -101,7 +96,7 @@ const statusColor: Record<string, string> = {
 onMounted(async () => {
   await load();
   try {
-    const health = await fetch('/api/health').then((r) => r.json());
+    const health = await api.url('/health').get().json<{ environment: string }>();
     isDev.value = health.environment === 'Development';
   } catch {
     isDev.value = false;

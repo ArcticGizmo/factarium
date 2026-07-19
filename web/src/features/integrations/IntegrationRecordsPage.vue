@@ -33,14 +33,7 @@
           hide-details
           style="max-width: 180px"
         />
-        <v-text-field
-          v-model="toDate"
-          label="To"
-          type="date"
-          density="compact"
-          hide-details
-          style="max-width: 180px"
-        />
+        <v-text-field v-model="toDate" label="To" type="date" density="compact" hide-details style="max-width: 180px" />
         <v-btn v-if="fromDate || toDate" size="small" variant="text" @click="clearDates">Clear dates</v-btn>
         <v-spacer />
         <v-select
@@ -160,6 +153,7 @@ import { useRoute } from 'vue-router';
 import BasePage from '../../components/BasePage.vue';
 import type { RecordsSummary, RawRecordView, RecordsPageResult } from '../../types';
 import { formatDateTime as fmt } from '../../utils/datetime';
+import { api } from '../../api';
 
 const route = useRoute();
 const id = computed(() => String(route.params.id));
@@ -196,10 +190,7 @@ const backTo = computed(() => {
 
 async function loadSummary() {
   try {
-    summary.value = await fetch(`/api/integrations/${id.value}/records/summary`).then((r) => {
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
-    });
+    summary.value = await api.url(`/integrations/${id.value}/records/summary`).get().json<RecordsSummary>();
     error.value = null;
     const types = summary.value?.entityTypes ?? [];
     selectedType.value = types.length > 0 ? types[0].entityType : null;
@@ -224,9 +215,7 @@ async function loadRecords() {
     if (fromDate.value) params.set('from', new Date(`${fromDate.value}T00:00:00`).toISOString());
     if (toDate.value) params.set('to', new Date(`${toDate.value}T23:59:59.999`).toISOString());
 
-    const result: RecordsPageResult = await fetch(
-      `/api/integrations/${id.value}/records?${params}`
-    ).then((r) => r.json());
+    const result = await api.url(`/integrations/${id.value}/records?${params}`).get().json<RecordsPageResult>();
     records.value = result.records;
     total.value = result.total;
     error.value = null;
