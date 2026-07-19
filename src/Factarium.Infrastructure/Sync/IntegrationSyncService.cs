@@ -16,11 +16,30 @@ internal sealed class IntegrationSyncService(
     TimeProvider clock,
     ILogger<IntegrationSyncService> logger) : IIntegrationSyncService
 {
-    public async Task<SyncResult> RunAsync(Guid integrationId, CancellationToken cancellationToken)
+    public async Task<SyncResult> RunAsync(Guid integrationId, SyncRunTrigger trigger, CancellationToken cancellationToken)
     {
         var integration = await db.Integrations
             .FirstOrDefaultAsync(i => i.Id == integrationId, cancellationToken)
             ?? throw new InvalidOperationException($"Integration {integrationId} not found.");
+
+        // Open a history row and mark the connection running up front, so the run is
+        // visible while it executes and even the misconfigured paths below are recorded.
+        var startedAt = clock.GetUtcNow();
+        var run = new SyncRun
+        {
+            IntegrationId = integration.Id,
+            IntegrationName = integration.Name,
+            IntegrationType = integration.Type,
+            Trigger = trigger,
+            Status = SyncRunStatus.Running,
+            StartedAt = startedAt,
+        };
+        db.SyncRuns.Add(run);
+
+        integration.LastRunStartedAt = startedAt;
+        integration.LastRunStatus = SyncRunStatus.Running;
+        integration.LastRunError = null;
+        await db.SaveChangesAsync(cancellationToken);
 
         var source = pullSources.FirstOrDefault(
             s => string.Equals(s.Type, integration.Type, StringComparison.OrdinalIgnoreCase));
@@ -29,15 +48,11 @@ internal sealed class IntegrationSyncService(
         {
             return await FinishAsync(
                 integration,
+                run,
                 SyncResult.Failed($"No pull source registered for type '{integration.Type}'."),
                 cursor: null,
                 cancellationToken);
         }
-
-        integration.LastRunStartedAt = clock.GetUtcNow();
-        integration.LastRunStatus = SyncRunStatus.Running;
-        integration.LastRunError = null;
-        await db.SaveChangesAsync(cancellationToken);
 
         var cursor = new DictionaryCursorStore(ParseDictionary(integration.CursorState));
         SyncResult result;
@@ -66,11 +81,12 @@ internal sealed class IntegrationSyncService(
             result = SyncResult.Failed(ex.Message);
         }
 
-        return await FinishAsync(integration, result, cursor, cancellationToken);
+        return await FinishAsync(integration, run, result, cursor, cancellationToken);
     }
 
     private async Task<SyncResult> FinishAsync(
         Integration integration,
+        SyncRun run,
         SyncResult result,
         DictionaryCursorStore? cursor,
         CancellationToken cancellationToken)
@@ -80,9 +96,18 @@ internal sealed class IntegrationSyncService(
             integration.CursorState = JsonSerializer.Serialize(cursor.Snapshot());
         }
 
-        integration.LastRunCompletedAt = clock.GetUtcNow();
+        var completedAt = clock.GetUtcNow();
+        var status = result.Succeeded ? SyncRunStatus.Success : SyncRunStatus.Failed;
+
+        // Stamp the history row and mirror the outcome onto the connection's latest-run fields.
+        run.CompletedAt = completedAt;
+        run.RecordsWritten = result.RecordsWritten;
+        run.Status = status;
+        run.Error = result.Error;
+
+        integration.LastRunCompletedAt = completedAt;
         integration.LastRunRecordsWritten = result.RecordsWritten;
-        integration.LastRunStatus = result.Succeeded ? SyncRunStatus.Success : SyncRunStatus.Failed;
+        integration.LastRunStatus = status;
         integration.LastRunError = result.Error;
 
         await db.SaveChangesAsync(cancellationToken);

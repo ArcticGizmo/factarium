@@ -103,6 +103,7 @@ try
     });
 
     app.MapIntegrationEndpoints();
+    app.MapSyncRunEndpoints();
     app.MapPeopleEndpoints();
     app.MapDashboardEndpoints();
     app.MapPipelineEndpoints();

@@ -39,7 +39,10 @@ internal sealed class QuartzIntegrationScheduler(ISchedulerFactory factory) : II
     {
         var scheduler = await factory.GetScheduler(cancellationToken);
         await EnsureJobAsync(scheduler, integrationId, cancellationToken);
-        await scheduler.TriggerJob(KeyFor(integrationId), cancellationToken);
+
+        // Mark the fire as manual so the job records an adhoc (not scheduled) run.
+        var data = new JobDataMap { { IntegrationSyncJob.ManualTriggerKey, "true" } };
+        await scheduler.TriggerJob(KeyFor(integrationId), data, cancellationToken);
     }
 
     public async Task UnscheduleAsync(Guid integrationId, CancellationToken cancellationToken)

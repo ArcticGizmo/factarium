@@ -9,6 +9,7 @@ import GitHubIntegrationsPage from '../features/integrations/GitHubIntegrationsP
 import JiraIntegrationsPage from '../features/integrations/JiraIntegrationsPage.vue';
 import ClaudeIntegrationsPage from '../features/integrations/ClaudeIntegrationsPage.vue';
 import PipelinePage from '../features/integrations/PipelinePage.vue';
+import SyncActivityPage from '../features/integrations/SyncActivityPage.vue';
 import IntegrationRecordsPage from '../features/integrations/IntegrationRecordsPage.vue';
 
 export const routes: RouteRecordRaw[] = [
@@ -22,6 +23,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/integrations/github', name: 'integrations-github', component: GitHubIntegrationsPage },
   { path: '/integrations/jira', name: 'integrations-jira', component: JiraIntegrationsPage },
   { path: '/integrations/claude', name: 'integrations-claude', component: ClaudeIntegrationsPage },
+  { path: '/integrations/activity', name: 'integrations-activity', component: SyncActivityPage },
   { path: '/integrations/pipeline', name: 'integrations-pipeline', component: PipelinePage },
   {
     path: '/integrations/:id/records',

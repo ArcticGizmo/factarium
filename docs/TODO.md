@@ -3,7 +3,6 @@
 - graphs and intent needs refinement
   - each page needs a reason to be there
   - when we have multiple repos we will need to be able to select/compare between them
-- ~~Source schedules and pipelines are a bit confusing. If we are specifically targetting github, it should be in a github section~~ ✅ Done: "Sources" is now **Integrations** with a per-type section each (GitHub / Jira / Claude) plus a separate Pipeline page; backend stores typed per-integration config (TPH) instead of a generic settings blob.
 - need some kind of health metric to say when everything came in
 - cron schedule needs to be humanised
 - Do we need to separate visualisation from the backend so that you can just run a visualisation client?

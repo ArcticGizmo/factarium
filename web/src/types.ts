@@ -177,3 +177,26 @@ export interface PipelineStep {
   lastItemsProcessed: number;
   lastRunAt: string | null;
 }
+
+// --- /api/sync-runs ---
+// One recorded execution of an integration's sync. `trigger` is "Scheduled" | "Manual";
+// `status` is "Running" | "Success" | "Failed".
+export interface SyncRun {
+  id: number;
+  integrationId: string;
+  integrationName: string;
+  integrationType: string;
+  trigger: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  recordsWritten: number;
+  error: string | null;
+}
+
+export interface SyncRunsPageResult {
+  total: number;
+  page: number;
+  pageSize: number;
+  runs: SyncRun[];
+}

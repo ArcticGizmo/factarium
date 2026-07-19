@@ -1,4 +1,5 @@
 using Factarium.Application.Sync;
+using Factarium.Domain.Sync;
 using Quartz;
 
 namespace Factarium.Api.Scheduling;
@@ -13,6 +14,13 @@ public sealed class IntegrationSyncJob(IIntegrationSyncService sync, ILogger<Int
 {
     public const string IntegrationIdKey = "integrationId";
 
+    /// <summary>
+    /// Data-map key stamped on manually-fired triggers by
+    /// <see cref="QuartzIntegrationScheduler.TriggerNowAsync"/>. Cron triggers omit it,
+    /// so its presence distinguishes an adhoc run from a scheduled one.
+    /// </summary>
+    public const string ManualTriggerKey = "manualTrigger";
+
     public async Task Execute(IJobExecutionContext context)
     {
         var raw = context.MergedJobDataMap.GetString(IntegrationIdKey);
@@ -22,6 +30,10 @@ public sealed class IntegrationSyncJob(IIntegrationSyncService sync, ILogger<Int
             return;
         }
 
-        await sync.RunAsync(integrationId, context.CancellationToken);
+        var trigger = context.MergedJobDataMap.ContainsKey(ManualTriggerKey)
+            ? SyncRunTrigger.Manual
+            : SyncRunTrigger.Scheduled;
+
+        await sync.RunAsync(integrationId, trigger, context.CancellationToken);
     }
 }

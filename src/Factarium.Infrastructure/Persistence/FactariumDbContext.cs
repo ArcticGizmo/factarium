@@ -25,6 +25,8 @@ public class FactariumDbContext(DbContextOptions<FactariumDbContext> options)
 
     public DbSet<RawRecord> RawRecords => Set<RawRecord>();
 
+    public DbSet<SyncRun> SyncRuns => Set<SyncRun>();
+
     public DbSet<Person> People => Set<Person>();
 
     public DbSet<SourceIdentity> SourceIdentities => Set<SourceIdentity>();
