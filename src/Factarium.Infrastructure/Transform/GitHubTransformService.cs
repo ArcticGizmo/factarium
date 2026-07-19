@@ -125,7 +125,7 @@ internal sealed class GitHubTransformService(FactariumDbContext db, TimeProvider
 
             repo.FullName = fullName;
             repo.Name = Str(payload, "name") ?? fullName.Split('/').Last();
-            repo.Owner = payload.TryGetProperty("owner", out var owner) ? Str(owner, "login") ?? "" : fullName.Split('/')[0];
+            repo.Owner = Str(payload, "owner_login") ?? fullName.Split('/')[0];
             repo.DefaultBranch = Str(payload, "default_branch");
             repo.UpdatedAt = Timestamp(payload, "updated_at");
         }

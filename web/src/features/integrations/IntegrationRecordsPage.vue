@@ -7,6 +7,33 @@
 
     <div v-if="error" class="text-error mb-2">{{ error }}</div>
 
+    <!-- Repository details: scoped to one repo, so shown here rather than as a tab. -->
+    <v-sheet v-if="repo" rounded border class="pa-3 mb-3">
+      <div class="d-flex align-center flex-wrap ga-2">
+        <a
+          v-if="repo.html_url"
+          :href="repo.html_url"
+          target="_blank"
+          rel="noopener"
+          class="text-body-1 font-weight-medium"
+        >
+          {{ repo.full_name }}
+        </a>
+        <span v-else class="text-body-1 font-weight-medium">{{ repo.full_name }}</span>
+        <v-chip v-if="repo.visibility" size="x-small" variant="tonal">{{ repo.visibility }}</v-chip>
+        <v-chip v-if="repo.language" size="x-small" variant="tonal">{{ repo.language }}</v-chip>
+        <v-chip v-if="repo.default_branch" size="x-small" variant="tonal" prepend-icon="mdi-source-branch">
+          {{ repo.default_branch }}
+        </v-chip>
+        <v-spacer />
+        <span class="text-caption text-medium-emphasis">
+          ★ {{ repo.stargazers_count ?? 0 }} · {{ repo.forks_count ?? 0 }} forks ·
+          {{ repo.open_issues_count ?? 0 }} open issues
+        </span>
+      </div>
+      <div v-if="repo.description" class="text-body-2 text-medium-emphasis mt-1">{{ repo.description }}</div>
+    </v-sheet>
+
     <div class="text-body-2 text-medium-emphasis mb-3">
       Everything Factarium has replicated for this connection, held in the bronze tier. Basic fields are extracted into
       columns; open any row to see the raw source payload.
@@ -224,6 +251,7 @@ const rawOpen = ref(false);
 const rawRecord = ref<RawRecordView | null>(null);
 
 const title = computed(() => (summary.value ? `${summary.value.name} — records` : 'Records'));
+const repo = computed(() => summary.value?.repository ?? null);
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 
 const backTo = computed(() => {

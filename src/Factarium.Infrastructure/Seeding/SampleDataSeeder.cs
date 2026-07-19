@@ -82,12 +82,19 @@ internal sealed class SampleDataSeeder(
             facts.Add(Fact(SourceGitHub, "repository", repoId.ToString(), new
             {
                 id = repoId,
-                node_id = $"R_{repoId}",
-                name = repoName,
                 full_name = fullName,
-                @private = false,
-                owner = new { login = Owner, id = 1, type = "Organization" },
+                name = repoName,
+                owner_id = 1,
+                owner_login = Owner,
+                description = $"Sample repository {repoName}",
+                html_url = $"https://github.com/{fullName}",
                 default_branch = "main",
+                language = "C#",
+                visibility = "public",
+                stargazers_count = rng.Next(0, 400),
+                forks_count = rng.Next(0, 60),
+                open_issues_count = rng.Next(0, 30),
+                pushed_at = Iso(now.AddDays(-rng.Next(0, 5))),
                 created_at = Iso(repoCreated),
                 updated_at = Iso(now.AddDays(-rng.Next(0, 5))),
             }, repoCreated));

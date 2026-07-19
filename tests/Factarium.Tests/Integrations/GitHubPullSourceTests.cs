@@ -110,6 +110,26 @@ public class GitHubPullSourceTests
         Assert.Equal("dc8", review.GetProperty("commit_id").GetString());
         Assert.False(review.TryGetProperty("user", out _));
         Assert.False(review.TryGetProperty("body", out _));
+
+        // The repository is flattened to identity, owner and header fields; the
+        // nested owner/license/permissions blobs are dropped.
+        var repoFact = sink.Facts.Single(f => f.EntityType == "repository");
+        using var repoDoc = JsonDocument.Parse(repoFact.Payload);
+        var repository = repoDoc.RootElement;
+
+        Assert.Equal("acme/repo1", repository.GetProperty("full_name").GetString());
+        Assert.Equal("repo1", repository.GetProperty("name").GetString());
+        Assert.Equal("acme", repository.GetProperty("owner_login").GetString());
+        Assert.Equal(42, repository.GetProperty("owner_id").GetInt64());
+        Assert.Equal("C#", repository.GetProperty("language").GetString());
+        Assert.Equal(7, repository.GetProperty("stargazers_count").GetInt32());
+        Assert.False(repository.TryGetProperty("owner", out _));
+        Assert.False(repository.TryGetProperty("permissions", out _));
+        Assert.False(repository.TryGetProperty("license", out _));
+        foreach (var property in repository.EnumerateObject())
+        {
+            Assert.NotEqual(JsonValueKind.Object, property.Value.ValueKind);
+        }
     }
 
     [Fact]
@@ -161,7 +181,18 @@ public class GitHubPullSourceTests
         return (path, page2: query.Contains("page=2")) switch
         {
             ("/repos/acme/repo1", _) => StubHttpMessageHandler.Json(
-                """{"id":1,"full_name":"acme/repo1","updated_at":"2026-07-01T00:00:00Z"}"""),
+                """
+                {
+                  "id": 1, "node_id": "R_1", "full_name": "acme/repo1", "name": "repo1",
+                  "owner": { "login": "acme", "id": 42, "type": "Organization", "node_id": "O_42" },
+                  "description": "A test repo", "html_url": "https://github.com/acme/repo1",
+                  "default_branch": "main", "language": "C#", "visibility": "public",
+                  "stargazers_count": 7, "forks_count": 2, "open_issues_count": 3,
+                  "pushed_at": "2026-07-01T00:00:00Z", "created_at": "2026-06-01T00:00:00Z",
+                  "updated_at": "2026-07-01T00:00:00Z",
+                  "permissions": { "admin": true }, "license": { "key": "mit" }
+                }
+                """),
 
             ("/repos/acme/repo1/pulls", true) => StubHttpMessageHandler.Json(
                 """[{"id":12,"number":2,"state":"closed","updated_at":"2026-07-09T00:00:00Z"}]"""),

@@ -129,11 +129,28 @@ export interface RecordTypeCount {
   count: number;
 }
 
+export interface RepositorySummary {
+  full_name: string | null;
+  name: string | null;
+  owner_login: string | null;
+  description: string | null;
+  html_url: string | null;
+  default_branch: string | null;
+  language: string | null;
+  visibility: string | null;
+  stargazers_count: number | null;
+  forks_count: number | null;
+  open_issues_count: number | null;
+  pushed_at: string | null;
+}
+
 export interface RecordsSummary {
   id: string;
   name: string;
   type: string;
   entityTypes: RecordTypeCount[];
+  // Present for GitHub integrations; shown in the header instead of a tab.
+  repository: RepositorySummary | null;
 }
 
 export interface RawRecordView {

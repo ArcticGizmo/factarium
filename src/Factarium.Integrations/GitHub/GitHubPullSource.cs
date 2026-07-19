@@ -219,7 +219,40 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
     }
 
     private static RawFact RepositoryFact(JsonElement repo) =>
-        new(Source, "repository", Id(repo), repo.GetRawText(), GetTimestamp(repo, "updated_at"));
+        new(Source, "repository", Id(repo), FlattenRepository(repo), GetTimestamp(repo, "updated_at"));
+
+    /// <summary>
+    /// Flattens a GitHub repository into the fields Factarium uses (identity, owner,
+    /// default branch, timestamps) plus the handful shown on the records header
+    /// (description, language, visibility, star/fork/issue counts). Nested owner,
+    /// license, permissions and the dozens of *_url templates are discarded.
+    /// </summary>
+    private static string FlattenRepository(JsonElement repo)
+    {
+        var owner = Object(repo, "owner");
+
+        var node = new JsonObject
+        {
+            ["id"] = Num(repo, "id"),
+            ["full_name"] = Str(repo, "full_name"),
+            ["name"] = Str(repo, "name"),
+            ["owner_id"] = UserId(owner),
+            ["owner_login"] = Str(owner, "login"),
+            ["description"] = Str(repo, "description"),
+            ["html_url"] = Str(repo, "html_url"),
+            ["default_branch"] = Str(repo, "default_branch"),
+            ["language"] = Str(repo, "language"),
+            ["visibility"] = Str(repo, "visibility"),
+            ["stargazers_count"] = Num(repo, "stargazers_count"),
+            ["forks_count"] = Num(repo, "forks_count"),
+            ["open_issues_count"] = Num(repo, "open_issues_count"),
+            ["pushed_at"] = Iso(repo, "pushed_at"),
+            ["created_at"] = Iso(repo, "created_at"),
+            ["updated_at"] = Iso(repo, "updated_at"),
+        };
+
+        return node.ToJsonString();
+    }
 
     /// <summary>
     /// Flattens a GitHub PR review into the fields Factarium uses: identity (id) and

@@ -208,14 +208,33 @@ public static class IntegrationEndpoints
                 return Results.NotFound();
             }
 
+            // The repository is shown in the header rather than as its own tab: the
+            // page is always scoped to one repo, so a single-row tab is redundant.
             var entityTypes = await db.RawRecords
-                .Where(r => r.IntegrationId == id)
+                .Where(r => r.IntegrationId == id && r.EntityType != "repository")
                 .GroupBy(r => r.EntityType)
                 .Select(g => new { EntityType = g.Key, Count = g.Count() })
                 .OrderBy(x => x.EntityType)
                 .ToListAsync(ct);
 
-            return Results.Ok(new { integration.Id, integration.Name, integration.Type, EntityTypes = entityTypes });
+            var repositoryPayload = await db.RawRecords
+                .Where(r => r.IntegrationId == id && r.EntityType == "repository")
+                .OrderByDescending(r => r.SourceUpdatedAt ?? r.FetchedAt)
+                .Select(r => r.Payload)
+                .FirstOrDefaultAsync(ct);
+
+            JsonElement? repository = repositoryPayload is null
+                ? null
+                : JsonSerializer.Deserialize<JsonElement>(repositoryPayload);
+
+            return Results.Ok(new
+            {
+                integration.Id,
+                integration.Name,
+                integration.Type,
+                EntityTypes = entityTypes,
+                Repository = repository,
+            });
         });
 
         group.MapGet("{id:guid}/records", async (
