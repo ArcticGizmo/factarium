@@ -101,6 +101,12 @@ internal sealed class SampleDataSeeder(
                 var sha = Sha(rng);
                 commitCount++;
 
+                // Roughly a quarter of commits are pair-authored with Claude, so the
+                // co-author extraction has something to show on the records page.
+                var coAuthors = c % 4 == 0
+                    ? new object[] { new { name = "Claude", email = "noreply@anthropic.com" } }
+                    : Array.Empty<object>();
+
                 facts.Add(Fact(SourceGitHub, "commit", $"{fullName}@{sha}", new
                 {
                     sha,
@@ -108,10 +114,11 @@ internal sealed class SampleDataSeeder(
                     tree_sha = Sha(rng),
                     parents = Array.Empty<string>(),
                     message = $"{PrTitles[rng.Next(PrTitles.Length)]} ({sha[..7]})",
-                    committer_id = 1000 + Array.IndexOf(People, person),
-                    committer_login = person.Login,
-                    committer_name = person.Name,
-                    committer_email = person.Email,
+                    author_id = 1000 + Array.IndexOf(People, person),
+                    author_login = person.Login,
+                    author_name = person.Name,
+                    author_email = person.Email,
+                    co_authors = coAuthors,
                     committed_at = Iso(when),
                     comment_count = 0,
                 }, when));

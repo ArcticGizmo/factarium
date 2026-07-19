@@ -279,15 +279,28 @@ function commit(r: RawRecordView): CommitRow {
 
 function extractAuthors(p: Record<string, any>): string[] {
   const names: string[] = [];
-  const primary = p.committer_name ?? p.committer_login;
+  // GitHub attributes a commit to its author and shows the account handle when it
+  // resolved one, falling back to the git name. committer_* covers records synced
+  // before the author switch.
+  const primary = p.author_login ?? p.author_name ?? p.committer_login ?? p.committer_name;
   if (primary) names.push(String(primary));
-  // Co-authored-by trailers in the commit message.
-  const message = String(p.message ?? '');
-  const re = /Co-authored-by:\s*([^<\n]+?)\s*(?:<[^>]*>)?\s*$/gim;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(message)) !== null) {
-    const name = m[1].trim();
-    if (name && !names.includes(name)) names.push(name);
+
+  const coAuthors: any[] = Array.isArray(p.co_authors) ? p.co_authors : [];
+  if (coAuthors.length > 0) {
+    // Structured co-authors extracted at sync time.
+    for (const ca of coAuthors) {
+      const name = ca?.name || ca?.email;
+      if (name && !names.includes(String(name))) names.push(String(name));
+    }
+  } else {
+    // Fallback: parse Co-authored-by trailers from the message (older records).
+    const message = String(p.message ?? '');
+    const re = /Co-authored-by:\s*([^<\n]+?)\s*(?:<[^>]*>)?\s*$/gim;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(message)) !== null) {
+      const name = m[1].trim();
+      if (name && !names.includes(name)) names.push(name);
+    }
   }
   return names;
 }

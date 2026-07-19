@@ -43,23 +43,30 @@ public class GitHubPullSourceTests
         Assert.Equal("aaa", root.GetProperty("sha").GetString());
         Assert.Equal("acme/repo1", root.GetProperty("repo").GetString());
         Assert.Equal("t1", root.GetProperty("tree_sha").GetString());
-        Assert.Equal("first", root.GetProperty("message").GetString());
-        Assert.Equal(1, root.GetProperty("committer_id").GetInt64());
-        Assert.Equal("octo", root.GetProperty("committer_login").GetString());
-        Assert.Equal("Octo", root.GetProperty("committer_name").GetString());
-        Assert.Equal("o@e.com", root.GetProperty("committer_email").GetString());
+        Assert.Equal("first\n\nCo-authored-by: Side Kick <side@e.com>", root.GetProperty("message").GetString());
+
+        // The commit is attributed to its author: the resolved GitHub account
+        // (id/login) plus the git author name/email.
+        Assert.Equal(1, root.GetProperty("author_id").GetInt64());
+        Assert.Equal("octo", root.GetProperty("author_login").GetString());
+        Assert.Equal("Octo", root.GetProperty("author_name").GetString());
+        Assert.Equal("o@e.com", root.GetProperty("author_email").GetString());
         Assert.Equal(0, root.GetProperty("comment_count").GetInt32());
         Assert.Equal(["p1"], root.GetProperty("parents").EnumerateArray().Select(p => p.GetString()));
 
-        // Nothing nested or bulky survives.
+        // Co-authored-by trailers are pulled out of the message as {name, email}.
+        var coAuthors = root.GetProperty("co_authors");
+        Assert.Equal(JsonValueKind.Array, coAuthors.ValueKind);
+        var coAuthor = Assert.Single(coAuthors.EnumerateArray());
+        Assert.Equal("Side Kick", coAuthor.GetProperty("name").GetString());
+        Assert.Equal("side@e.com", coAuthor.GetProperty("email").GetString());
+
+        // Nothing nested or bulky survives beyond the small co-author entries: no
+        // embedded user blobs, verification or node ids.
         Assert.False(root.TryGetProperty("commit", out _));
         Assert.False(root.TryGetProperty("node_id", out _));
-        Assert.False(root.TryGetProperty("author", out _));
+        Assert.False(root.TryGetProperty("committer", out _));
         Assert.Equal(JsonValueKind.Object, root.ValueKind);
-        foreach (var property in root.EnumerateObject())
-        {
-            Assert.NotEqual(JsonValueKind.Object, property.Value.ValueKind);
-        }
     }
 
     [Fact]
@@ -140,7 +147,7 @@ public class GitHubPullSourceTests
                     "commit": {
                       "url": "https://api.github.com/repos/acme/repo1/git/commits/aaa",
                       "tree": { "sha": "t1", "url": "tu" },
-                      "message": "first",
+                      "message": "first\n\nCo-authored-by: Side Kick <side@e.com>",
                       "author": { "date": "2026-07-05T00:00:00Z", "name": "Octo", "email": "o@e.com" },
                       "committer": { "date": "2026-07-05T00:00:00Z", "name": "Octo", "email": "o@e.com" },
                       "verification": { "verified": false, "reason": "unsigned" },

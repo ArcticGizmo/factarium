@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Factarium.Application.Sync;
 using Microsoft.Extensions.Logging;
 
@@ -13,6 +14,12 @@ namespace Factarium.Integrations.GitHub;
 public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullSource> logger) : IPullSource
 {
     private const string Source = "github";
+
+    // "Co-authored-by: Name <email>" trailers — GitHub's convention for crediting
+    // additional authors on a commit. Matched case-insensitively, one per line.
+    private static readonly Regex CoAuthorTrailer = new(
+        @"^\s*Co-authored-by:\s*(?<name>[^<>\n]*?)\s*<(?<email>[^>\n]+)>\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Compiled);
 
     public string Type => Source;
 
@@ -193,14 +200,19 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
     /// <summary>
     /// Flattens a GitHub commit into the handful of fields Factarium actually uses:
     /// identity (sha, repo), git history (tree sha + parents), the message, who
-    /// committed (id/login/name/email), when, and the comment count. Everything
-    /// else (embedded user objects, verification, node ids) is discarded.
+    /// authored it and any co-authors, when, and the comment count. GitHub attributes
+    /// a commit to its author (not the committer, which is the merge bot on squashed
+    /// PRs), so we keep the author: the resolved GitHub account (id/login) when GitHub
+    /// matched one, and always the git author name/email as a fallback. Co-authors come
+    /// from "Co-authored-by" message trailers. Everything else (embedded user objects,
+    /// verification, node ids) is discarded.
     /// </summary>
     private static string FlattenCommit(JsonElement commit, string fullName)
     {
         var inner = Object(commit, "commit");
-        var gitCommitter = Object(inner, "committer");
-        var userCommitter = Object(commit, "committer");
+        var gitAuthor = Object(inner, "author");
+        var userAuthor = Object(commit, "author");
+        var message = Str(inner, "message");
 
         var node = new JsonObject
         {
@@ -208,16 +220,48 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
             ["repo"] = fullName,
             ["tree_sha"] = Str(Object(inner, "tree"), "sha"),
             ["parents"] = ParentShas(commit),
-            ["message"] = Str(inner, "message"),
-            ["committer_id"] = UserId(userCommitter),
-            ["committer_login"] = Str(userCommitter, "login"),
-            ["committer_name"] = Str(gitCommitter, "name"),
-            ["committer_email"] = Str(gitCommitter, "email"),
+            ["message"] = message,
+            ["author_id"] = UserId(userAuthor),
+            ["author_login"] = Str(userAuthor, "login"),
+            ["author_name"] = Str(gitAuthor, "name"),
+            ["author_email"] = Str(gitAuthor, "email"),
+            ["co_authors"] = CoAuthors(message),
             ["committed_at"] = CommitDate(commit)?.ToUniversalTime().ToString("o"),
             ["comment_count"] = CommentCount(inner),
         };
 
         return node.ToJsonString();
+    }
+
+    /// <summary>
+    /// Extracts "Co-authored-by: Name &lt;email&gt;" trailers from a commit message
+    /// as {name, email} objects, de-duplicated by email (case-insensitive).
+    /// </summary>
+    private static JsonArray CoAuthors(string? message)
+    {
+        var array = new JsonArray();
+        if (string.IsNullOrEmpty(message))
+        {
+            return array;
+        }
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match match in CoAuthorTrailer.Matches(message))
+        {
+            var email = match.Groups["email"].Value.Trim();
+            if (email.Length == 0 || !seen.Add(email))
+            {
+                continue;
+            }
+
+            array.Add(new JsonObject
+            {
+                ["name"] = match.Groups["name"].Value.Trim(),
+                ["email"] = email,
+            });
+        }
+
+        return array;
     }
 
     private static JsonElement Object(JsonElement element, string property) =>

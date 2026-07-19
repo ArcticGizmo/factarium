@@ -11,8 +11,9 @@ namespace Factarium.Infrastructure.Transform;
 /// <summary>
 /// Parses stored GitHub JSON into canonical entities, attributing each to a
 /// SourceIdentity (created on demand). Commits are stored flat (<c>repo</c>,
-/// <c>committer_login</c>, …); pull requests and reviews still carry
-/// <c>repository_full_name</c> / <c>pull_request_number</c> provenance fields.
+/// <c>author_login</c>, …) and attributed to their author; pull requests and
+/// reviews still carry <c>repository_full_name</c> / <c>pull_request_number</c>
+/// provenance fields.
 /// </summary>
 internal sealed class GitHubTransformService(FactariumDbContext db, TimeProvider clock) : ITransformService
 {
@@ -57,16 +58,15 @@ internal sealed class GitHubTransformService(FactariumDbContext db, TimeProvider
             }
         }
 
-        // Commits carry the committer as flat scalars (committer_login/committer_id).
+        // Commits carry the author as flat scalars (author_login/author_id). The
+        // committer_* fallback covers records synced before the author switch.
         foreach (var record in Records(byType, "commit"))
         {
             var payload = Root(record);
-            var login = Str(payload, "committer_login");
+            var login = Str(payload, "author_login") ?? Str(payload, "committer_login");
             if (login is not null)
             {
-                discovered[login] = payload.TryGetProperty("committer_id", out var id) && id.ValueKind == JsonValueKind.Number
-                    ? id.GetInt64().ToString()
-                    : null;
+                discovered[login] = ExternalId(payload, "author_id") ?? ExternalId(payload, "committer_id");
             }
         }
 
@@ -156,7 +156,7 @@ internal sealed class GitHubTransformService(FactariumDbContext db, TimeProvider
                 existing[key] = commit;
             }
 
-            var login = Str(payload, "committer_login");
+            var login = Str(payload, "author_login") ?? Str(payload, "committer_login");
             commit.AuthorLogin = login;
             commit.AuthorIdentityId = Resolve(identities, login);
             commit.Message = Str(payload, "message");
@@ -262,6 +262,11 @@ internal sealed class GitHubTransformService(FactariumDbContext db, TimeProvider
     private static string? Str(JsonElement element, string property) =>
         element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
+            : null;
+
+    private static string? ExternalId(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number
+            ? value.GetInt64().ToString()
             : null;
 
     private static DateTimeOffset? Timestamp(JsonElement element, string property) =>
