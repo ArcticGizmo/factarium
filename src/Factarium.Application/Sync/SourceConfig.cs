@@ -10,12 +10,13 @@ public abstract record SourceConfig;
 /// <summary>GitHub connector config: an org and/or an explicit repo list.</summary>
 public sealed record GitHubSourceConfig(string? Org, IReadOnlyList<string> Repos) : SourceConfig;
 
-/// <summary>Jira connector config: site URL, account email, and project scope.</summary>
+/// <summary>Jira connector config: site URL, account email, a single project, a history floor, and token mode.</summary>
 public sealed record JiraSourceConfig(
     string? BaseUrl,
     string? Email,
-    IReadOnlyList<string> ProjectKeys,
-    string? Jql) : SourceConfig;
+    string? ProjectKey,
+    DateTimeOffset? SyncSince,
+    bool ScopedToken) : SourceConfig;
 
 /// <summary>Claude Code connector config. Push-based, so it carries nothing today.</summary>
 public sealed record ClaudeSourceConfig : SourceConfig;

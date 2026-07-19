@@ -58,7 +58,7 @@ public sealed class GitHubIntegration : Integration
     public List<string> Repos { get; set; } = [];
 }
 
-/// <summary>Jira Cloud connection: a site, an account email, and project scope. Pull-based.</summary>
+/// <summary>Jira Cloud connection: a site, an account email, and a single project. Pull-based.</summary>
 public sealed class JiraIntegration : Integration
 {
     public const string TypeName = "jira";
@@ -69,11 +69,22 @@ public sealed class JiraIntegration : Integration
     /// <summary>Atlassian account email, paired with the API token to authenticate.</summary>
     public string? Email { get; set; }
 
-    /// <summary>Limit to these project keys; empty = everything visible.</summary>
-    public List<string> ProjectKeys { get; set; } = [];
+    /// <summary>The single project key this connection syncs, e.g. "QAI".</summary>
+    public string? ProjectKey { get; set; }
 
-    /// <summary>Optional raw JQL, overriding <see cref="ProjectKeys"/> when set.</summary>
-    public string? Jql { get; set; }
+    /// <summary>
+    /// When true, the API token is a scoped token: requests route through the Atlassian
+    /// API gateway (<c>https://api.atlassian.com/ex/jira/{cloudId}</c>) rather than the
+    /// site directly. Classic (unscoped) tokens use the site URL. Defaults to scoped.
+    /// </summary>
+    public bool ScopedToken { get; set; } = true;
+
+    /// <summary>
+    /// Historical floor for the first sync: issues updated before this are not pulled,
+    /// so a connection can start a few sprints back rather than replicating everything.
+    /// The incremental <c>issues:updated</c> cursor takes over once it passes this.
+    /// </summary>
+    public DateTimeOffset? SyncSince { get; set; }
 }
 
 /// <summary>

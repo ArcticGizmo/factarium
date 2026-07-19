@@ -138,10 +138,12 @@ internal sealed class JiraTransformService(FactariumDbContext db, TimeProvider c
             : null;
 
     private static DateTimeOffset? Date(JsonElement element, string property) =>
+        // Jira returns local offsets; store UTC so canonical timestamps match the bronze
+        // tier and satisfy Postgres timestamptz (zero-offset only).
         element.ValueKind == JsonValueKind.Object
         && element.TryGetProperty(property, out var value)
         && value.ValueKind == JsonValueKind.String
         && DateTimeOffset.TryParse(value.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
-            ? parsed
+            ? parsed.ToUniversalTime()
             : null;
 }

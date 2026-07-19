@@ -44,5 +44,6 @@ internal sealed class JiraIntegrationConfiguration : IEntityTypeConfiguration<Ji
     {
         builder.Property(x => x.BaseUrl).HasMaxLength(512);
         builder.Property(x => x.Email).HasMaxLength(256);
+        builder.Property(x => x.ProjectKey).HasMaxLength(64);
     }
 }

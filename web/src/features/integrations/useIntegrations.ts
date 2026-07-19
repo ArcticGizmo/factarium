@@ -19,11 +19,3 @@ export function useIntegrations(type: string) {
 
   return { integrations, error, load };
 }
-
-// "acme/api, acme/web" -> ["acme/api", "acme/web"]
-export function splitCsv(value: string): string[] {
-  return value
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-}

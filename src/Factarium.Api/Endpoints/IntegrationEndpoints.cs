@@ -21,8 +21,20 @@ public sealed record CreateJiraIntegrationRequest(
     bool Enabled,
     string? BaseUrl,
     string? Email,
-    List<string>? ProjectKeys,
-    string? Jql,
+    string? ProjectKey,
+    DateTimeOffset? SyncSince,
+    bool ScopedToken,
+    string? Credential);
+
+public sealed record UpdateJiraIntegrationRequest(
+    string Name,
+    string? Cron,
+    bool Enabled,
+    string? BaseUrl,
+    string? Email,
+    string? ProjectKey,
+    DateTimeOffset? SyncSince,
+    bool ScopedToken,
     string? Credential);
 
 public sealed record CreateClaudeIntegrationRequest(
@@ -151,10 +163,55 @@ public static class IntegrationEndpoints
                     ScheduleCron = request.Cron,
                     BaseUrl = Blank(request.BaseUrl),
                     Email = Blank(request.Email),
-                    ProjectKeys = Clean(request.ProjectKeys),
-                    Jql = Blank(request.Jql),
+                    ProjectKey = Blank(request.ProjectKey),
+                    SyncSince = request.SyncSince,
+                    ScopedToken = request.ScopedToken,
                 },
                 request.Credential, db, protector, scheduler, clock, ct));
+
+        group.MapPut("jira/{id:guid}", async (
+            Guid id,
+            UpdateJiraIntegrationRequest request,
+            FactariumDbContext db,
+            ICredentialProtector protector,
+            IIntegrationScheduler scheduler,
+            CancellationToken ct) =>
+        {
+            var integration = await db.Integrations.FindAsync([id], ct);
+            if (integration is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (integration is not JiraIntegration jira)
+            {
+                return Results.BadRequest("Integration is not a Jira connection.");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                return Results.BadRequest("Name is required.");
+            }
+
+            jira.Name = request.Name;
+            jira.Enabled = request.Enabled;
+            jira.ScheduleCron = Blank(request.Cron);
+            jira.BaseUrl = Blank(request.BaseUrl);
+            jira.Email = Blank(request.Email);
+            jira.ProjectKey = Blank(request.ProjectKey);
+            jira.SyncSince = request.SyncSince;
+            jira.ScopedToken = request.ScopedToken;
+            if (!string.IsNullOrWhiteSpace(request.Credential))
+            {
+                jira.EncryptedCredential = protector.Protect(request.Credential);
+            }
+
+            await db.SaveChangesAsync(ct);
+
+            // Reschedules or unschedules based on the new enabled/cron state.
+            await scheduler.ScheduleAsync(jira, ct);
+            return Results.NoContent();
+        });
 
         group.MapPost("claude", (
             CreateClaudeIntegrationRequest request,
@@ -372,7 +429,7 @@ public static class IntegrationEndpoints
     private static object? ConfigFor(Integration integration) => integration switch
     {
         GitHubIntegration gh => new { gh.Org, gh.Repos },
-        JiraIntegration jira => new { jira.BaseUrl, jira.Email, jira.ProjectKeys, jira.Jql },
+        JiraIntegration jira => new { jira.BaseUrl, jira.Email, jira.ProjectKey, jira.SyncSince, jira.ScopedToken },
         _ => null,
     };
 

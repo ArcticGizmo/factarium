@@ -101,8 +101,11 @@ export interface GitHubConfig {
 export interface JiraConfig {
   baseUrl: string | null;
   email: string | null;
-  projectKeys: string[];
-  jql: string | null;
+  projectKey: string | null;
+  // ISO date; the historical floor for the first sync.
+  syncSince: string | null;
+  // true = scoped token via the Atlassian API gateway; false = classic token against the site.
+  scopedToken: boolean;
 }
 
 // One row from GET /api/integrations. `config` carries the type-specific fields
