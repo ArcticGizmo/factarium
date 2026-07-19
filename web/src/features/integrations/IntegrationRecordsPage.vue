@@ -52,16 +52,16 @@
 
       <!-- Filters -->
       <div class="d-flex align-center flex-wrap ga-3 mb-3">
-        <v-text-field
-          v-model="fromDate"
-          label="From"
-          type="date"
-          density="compact"
-          hide-details
-          style="max-width: 180px"
+        <VueDatePicker
+          v-model="dateRange"
+          range
+          dark
+          auto-apply
+          :enable-time-picker="false"
+          format="yyyy-MM-dd"
+          placeholder="Filter by date range"
+          class="date-range"
         />
-        <v-text-field v-model="toDate" label="To" type="date" density="compact" hide-details style="max-width: 180px" />
-        <v-btn v-if="fromDate || toDate" size="small" variant="text" @click="clearDates">Clear dates</v-btn>
         <v-spacer />
         <v-select
           v-model="pageSize"
@@ -228,6 +228,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
+import { VueDatePicker } from '@vuepic/vue-datepicker';
+import '@vuepic/vue-datepicker/dist/main.css';
 import BasePage from '../../components/BasePage.vue';
 import type { RecordsSummary, RawRecordView, RecordsPageResult } from '../../types';
 import { formatDateTime as fmt } from '../../utils/datetime';
@@ -242,8 +244,8 @@ const total = ref(0);
 const page = ref(1);
 const pageSize = ref(25);
 const selectedType = ref<string | null>(null);
-const fromDate = ref('');
-const toDate = ref('');
+// vue-datepicker range: [start, end], or null when cleared.
+const dateRange = ref<Date[] | null>(null);
 const error = ref<string | null>(null);
 const loading = ref(false);
 
@@ -291,8 +293,9 @@ async function loadRecords() {
       page: String(page.value),
       pageSize: String(pageSize.value)
     });
-    if (fromDate.value) params.set('from', new Date(`${fromDate.value}T00:00:00`).toISOString());
-    if (toDate.value) params.set('to', new Date(`${toDate.value}T23:59:59.999`).toISOString());
+    const [from, to] = dateRange.value ?? [];
+    if (from) params.set('from', startOfDay(from).toISOString());
+    if (to) params.set('to', endOfDay(to).toISOString());
 
     const result = await api.url(`/integrations/${id.value}/records?${params}`).get().json<RecordsPageResult>();
     records.value = result.records;
@@ -315,13 +318,21 @@ function goToPage(p: number) {
   loadRecords();
 }
 
-function clearDates() {
-  fromDate.value = '';
-  toDate.value = '';
+// Inclusive day bounds in local time, matching the picker's date-only selection.
+function startOfDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function endOfDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x;
 }
 
 // Any tab / filter / page-size change resets to page 1 and reloads.
-watch([selectedType, fromDate, toDate, pageSize], () => {
+watch([selectedType, dateRange, pageSize], () => {
   page.value = 1;
   loadRecords();
 });
@@ -441,5 +452,14 @@ onMounted(loadSummary);
   overflow-x: auto;
   white-space: pre;
   max-height: 60vh;
+}
+
+/* vue-datepicker: sized and rounded to sit alongside the compact Vuetify fields. */
+.date-range {
+  max-width: 280px;
+}
+.date-range :deep(.dp__input) {
+  font-size: 0.875rem;
+  border-radius: 4px;
 }
 </style>
