@@ -54,10 +54,12 @@
       <div class="d-flex align-center flex-wrap ga-3 mb-3">
         <VueDatePicker
           v-model="dateRange"
-          range
+          :range="{ partialRange: false }"
           dark
           auto-apply
           :enable-time-picker="false"
+          :max-date="maxDate"
+          prevent-min-max-navigation
           format="yyyy-MM-dd"
           placeholder="Filter by date range"
           class="date-range"
@@ -246,6 +248,8 @@ const pageSize = ref(25);
 const selectedType = ref<string | null>(null);
 // vue-datepicker range: [start, end], or null when cleared.
 const dateRange = ref<Date[] | null>(null);
+// Records only exist in the past, so disallow selecting into the future.
+const maxDate = new Date();
 const error = ref<string | null>(null);
 const loading = ref(false);
 
