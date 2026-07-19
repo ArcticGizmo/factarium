@@ -44,20 +44,6 @@ internal sealed class GitHubTransformService(FactariumDbContext db, TimeProvider
         var map = existing.ToDictionary(i => i.Login, i => i.Id, StringComparer.OrdinalIgnoreCase);
         var discovered = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
 
-        void Note(JsonElement payload, string userProperty)
-        {
-            if (payload.TryGetProperty(userProperty, out var user) && user.ValueKind == JsonValueKind.Object)
-            {
-                var login = Str(user, "login");
-                if (login is not null)
-                {
-                    discovered[login] = user.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.Number
-                        ? id.GetInt64().ToString()
-                        : null;
-                }
-            }
-        }
-
         // Commits carry the author as flat scalars (author_login/author_id). The
         // committer_* fallback covers records synced before the author switch.
         foreach (var record in Records(byType, "commit"))
@@ -70,9 +56,26 @@ internal sealed class GitHubTransformService(FactariumDbContext db, TimeProvider
             }
         }
 
-        foreach (var record in Records(byType, "pull_request").Concat(Records(byType, "review")))
+        // Pull requests carry their author as flat scalars (author_login/author_id).
+        foreach (var record in Records(byType, "pull_request"))
         {
-            Note(Root(record), "user");
+            var payload = Root(record);
+            var login = Str(payload, "author_login");
+            if (login is not null)
+            {
+                discovered[login] = ExternalId(payload, "author_id");
+            }
+        }
+
+        // Reviews carry their reviewer as flat scalars (reviewer_login/reviewer_id).
+        foreach (var record in Records(byType, "review"))
+        {
+            var payload = Root(record);
+            var login = Str(payload, "reviewer_login");
+            if (login is not null)
+            {
+                discovered[login] = ExternalId(payload, "reviewer_id");
+            }
         }
 
         var now = clock.GetUtcNow();
@@ -192,14 +195,14 @@ internal sealed class GitHubTransformService(FactariumDbContext db, TimeProvider
                 existing[externalId] = pr;
             }
 
-            var login = payload.TryGetProperty("user", out var user) ? Str(user, "login") : null;
+            var login = Str(payload, "author_login");
             pr.RepositoryFullName = Str(payload, "repository_full_name") ?? pr.RepositoryFullName;
             pr.Number = payload.TryGetProperty("number", out var n) ? n.GetInt32() : 0;
             pr.Title = Str(payload, "title");
             pr.State = Str(payload, "state") ?? "unknown";
             pr.MergedAt = Timestamp(payload, "merged_at");
             pr.IsMerged = pr.MergedAt is not null;
-            pr.BaseRef = payload.TryGetProperty("base", out var baseObj) ? Str(baseObj, "ref") : null;
+            pr.BaseRef = Str(payload, "base_ref");
             pr.CreatedAt = Timestamp(payload, "created_at");
             pr.ClosedAt = Timestamp(payload, "closed_at");
             pr.AuthorLogin = login;
@@ -234,7 +237,7 @@ internal sealed class GitHubTransformService(FactariumDbContext db, TimeProvider
                 existing[externalId] = review;
             }
 
-            var login = payload.TryGetProperty("user", out var user) ? Str(user, "login") : null;
+            var login = Str(payload, "reviewer_login");
             review.RepositoryFullName = Str(payload, "repository_full_name") ?? review.RepositoryFullName;
             review.PullRequestNumber = payload.TryGetProperty("pull_request_number", out var pn) ? pn.GetInt32() : 0;
             review.State = Str(payload, "state");

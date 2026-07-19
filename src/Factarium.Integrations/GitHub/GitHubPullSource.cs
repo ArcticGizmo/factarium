@@ -109,8 +109,14 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
             }
 
             var number = pr.GetProperty("number").GetInt32();
-            facts.Add(new RawFact(Source, "pull_request", Id(pr),
-                Enrich(pr, ("repository_full_name", fullName)), updatedAt));
+
+            // The list endpoint omits comment counts and diff stats, so fetch the
+            // PR detail (a superset) and flatten that; fall back to the list object
+            // if it 404s (e.g. deleted between pages).
+            var detail = await client.GetObjectAsync($"repos/{fullName}/pulls/{number}", token, cancellationToken);
+            var payload = detail ?? pr;
+            facts.Add(new RawFact(Source, "pull_request", Id(payload),
+                FlattenPullRequest(payload, fullName), updatedAt));
             if (updatedAt is not null && (maxUpdated is null || updatedAt > maxUpdated))
             {
                 maxUpdated = updatedAt;
@@ -120,7 +126,7 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
                                $"repos/{fullName}/pulls/{number}/reviews?per_page=100", token, cancellationToken))
             {
                 facts.Add(new RawFact(Source, "review", Id(review),
-                    Enrich(review, ("repository_full_name", fullName), ("pull_request_number", number)),
+                    FlattenReview(review, fullName, number),
                     GetTimestamp(review, "submitted_at")));
             }
         }
@@ -170,17 +176,71 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
         return written;
     }
 
+    /// <summary>
+    /// Flattens a GitHub pull request into the fields Factarium uses: identity
+    /// (id, number, repo), the author, source/target branches, draft/state/merge
+    /// status, lifecycle timestamps, the merge commit, and comment/diff stats.
+    /// Comment counts and diff stats only exist on the PR detail endpoint, so the
+    /// caller passes the detail object here. Nested user/repo blobs are discarded.
+    /// </summary>
+    private static string FlattenPullRequest(JsonElement pr, string fullName)
+    {
+        var user = Object(pr, "user");
+        var baseRef = Object(pr, "base");
+        var head = Object(pr, "head");
+
+        var node = new JsonObject
+        {
+            ["id"] = Num(pr, "id"),
+            ["number"] = Num(pr, "number"),
+            ["repository_full_name"] = fullName,
+            ["title"] = Str(pr, "title"),
+            ["state"] = Str(pr, "state"),
+            ["draft"] = Bool(pr, "draft"),
+            ["author_id"] = UserId(user),
+            ["author_login"] = Str(user, "login"),
+            ["base_ref"] = Str(baseRef, "ref"),
+            ["head_ref"] = Str(head, "ref"),
+            ["head_repo"] = Str(Object(head, "repo"), "full_name"),
+            ["created_at"] = Iso(pr, "created_at"),
+            ["updated_at"] = Iso(pr, "updated_at"),
+            ["closed_at"] = Iso(pr, "closed_at"),
+            ["merged_at"] = Iso(pr, "merged_at"),
+            ["merge_commit_sha"] = Str(pr, "merge_commit_sha"),
+            ["comment_count"] = Num(pr, "comments"),
+            ["review_comment_count"] = Num(pr, "review_comments"),
+            ["additions"] = Num(pr, "additions"),
+            ["deletions"] = Num(pr, "deletions"),
+            ["changed_files"] = Num(pr, "changed_files"),
+            ["commit_count"] = Num(pr, "commits"),
+        };
+
+        return node.ToJsonString();
+    }
+
     private static RawFact RepositoryFact(JsonElement repo) =>
         new(Source, "repository", Id(repo), repo.GetRawText(), GetTimestamp(repo, "updated_at"));
 
-    /// <summary>Adds Factarium provenance fields (repo/PR context) to a raw payload.</summary>
-    private static string Enrich(JsonElement element, params (string Key, JsonNode? Value)[] fields)
+    /// <summary>
+    /// Flattens a GitHub PR review into the fields Factarium uses: identity (id) and
+    /// provenance (repo + PR number), the reviewer, verdict state, when it was
+    /// submitted, and the reviewed commit. The nested user blob and body are discarded.
+    /// </summary>
+    private static string FlattenReview(JsonElement review, string fullName, int number)
     {
-        var node = JsonNode.Parse(element.GetRawText())!.AsObject();
-        foreach (var (key, value) in fields)
+        var user = Object(review, "user");
+
+        var node = new JsonObject
         {
-            node[key] = value;
-        }
+            ["id"] = Num(review, "id"),
+            ["repository_full_name"] = fullName,
+            ["pull_request_number"] = number,
+            ["reviewer_id"] = UserId(user),
+            ["reviewer_login"] = Str(user, "login"),
+            ["state"] = Str(review, "state"),
+            ["submitted_at"] = Iso(review, "submitted_at"),
+            ["commit_id"] = Str(review, "commit_id"),
+        };
 
         return node.ToJsonString();
     }
@@ -275,6 +335,23 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
         && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+
+    private static JsonNode? Num(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number
+            ? JsonValue.Create(value.GetInt64())
+            : null;
+
+    private static JsonNode? Bool(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty(property, out var value)
+        && value.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? JsonValue.Create(value.GetBoolean())
+            : null;
+
+    /// <summary>Reads a timestamp property and re-serializes it as a normalized ISO-8601 string.</summary>
+    private static string? Iso(JsonElement element, string property) =>
+        GetTimestamp(element, property)?.ToUniversalTime().ToString("o");
 
     private static JsonNode? UserId(JsonElement user) =>
         user.ValueKind == JsonValueKind.Object

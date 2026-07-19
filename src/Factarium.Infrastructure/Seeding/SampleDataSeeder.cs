@@ -143,17 +143,26 @@ internal sealed class SampleDataSeeder(
                 {
                     id = prId,
                     number,
+                    repository_full_name = fullName,
                     title = PrTitles[rng.Next(PrTitles.Length)],
                     state = isOpen ? "open" : "closed",
-                    user = new { login = author.Login, id = 1000 + Array.IndexOf(People, author) },
+                    draft = false,
+                    author_id = 1000 + Array.IndexOf(People, author),
+                    author_login = author.Login,
+                    base_ref = "main",
+                    head_ref = $"feature/{number}",
+                    head_repo = fullName,
                     created_at = Iso(created),
                     updated_at = Iso(updated),
                     closed_at = closed is null ? null : Iso(closed.Value),
                     merged_at = merged is null ? null : Iso(merged.Value),
                     merge_commit_sha = merged is null ? null : Sha(rng),
-                    @base = new { @ref = "main", repo = new { full_name = fullName, id = repoId } },
-                    head = new { @ref = $"feature/{number}" },
-                    repository_full_name = fullName,
+                    comment_count = rng.Next(0, 6),
+                    review_comment_count = rng.Next(0, 10),
+                    additions = rng.Next(1, 500),
+                    deletions = rng.Next(0, 200),
+                    changed_files = rng.Next(1, 20),
+                    commit_count = rng.Next(1, 15),
                 }, updated));
 
                 var reviews = rng.Next(0, 4);
@@ -167,11 +176,13 @@ internal sealed class SampleDataSeeder(
                     facts.Add(Fact(SourceGitHub, "review", reviewId.ToString(), new
                     {
                         id = reviewId,
-                        user = new { login = reviewer.Login, id = 1000 + Array.IndexOf(People, reviewer) },
+                        repository_full_name = fullName,
+                        pull_request_number = number,
+                        reviewer_id = 1000 + Array.IndexOf(People, reviewer),
+                        reviewer_login = reviewer.Login,
                         state = ReviewStates[rng.Next(ReviewStates.Length)],
                         submitted_at = Iso(submitted),
-                        pull_request_number = number,
-                        repository_full_name = fullName,
+                        commit_id = Sha(rng),
                     }, submitted));
                 }
             }

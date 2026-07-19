@@ -88,6 +88,57 @@
           </tbody>
         </v-table>
 
+        <!-- Pull-request-specific extracted columns -->
+        <v-table v-else-if="selectedType === 'pull_request'" density="comfortable">
+          <thead>
+            <tr>
+              <th style="width: 170px">Updated</th>
+              <th style="width: 60px">PR</th>
+              <th>Title</th>
+              <th style="width: 100px">State</th>
+              <th style="width: 150px">Author</th>
+              <th style="width: 200px">Branch</th>
+              <th style="width: 110px">Changes</th>
+              <th style="width: 90px">Comments</th>
+              <th style="width: 70px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="records.length === 0">
+              <td colspan="9" class="text-medium-emphasis text-caption py-4">No pull requests in this range.</td>
+            </tr>
+            <tr v-for="r in records" :key="r.id">
+              <td class="text-caption">{{ fmt(r.sourceUpdatedAt) }}</td>
+              <td>
+                <a v-if="pr(r).link" :href="pr(r).link!" target="_blank" rel="noopener">
+                  <code>#{{ pr(r).number }}</code>
+                </a>
+                <code v-else>#{{ pr(r).number }}</code>
+              </td>
+              <td>{{ pr(r).title }}</td>
+              <td>
+                <v-chip size="x-small" variant="flat" :color="prStateColor[pr(r).state] || 'grey'">
+                  {{ pr(r).state }}
+                </v-chip>
+              </td>
+              <td class="text-caption">{{ pr(r).author ?? '—' }}</td>
+              <td class="text-caption">
+                <code>{{ pr(r).headRef ?? '?' }}</code> →
+                <code>{{ pr(r).baseRef ?? '?' }}</code>
+              </td>
+              <td class="text-caption">
+                <span v-if="pr(r).additions !== null" class="text-success">+{{ pr(r).additions }}</span>
+                <span v-if="pr(r).deletions !== null" class="text-error"> −{{ pr(r).deletions }}</span>
+                <span v-if="pr(r).additions === null && pr(r).deletions === null" class="text-medium-emphasis">—</span>
+              </td>
+              <td>{{ pr(r).comments }}</td>
+              <td>
+                <v-btn size="x-small" variant="text" @click="openRaw(r)">Raw</v-btn>
+              </td>
+            </tr>
+          </tbody>
+        </v-table>
+
         <!-- Generic view for other entity types -->
         <v-table v-else density="comfortable">
           <thead>
@@ -303,6 +354,45 @@ function extractAuthors(p: Record<string, any>): string[] {
     }
   }
   return names;
+}
+
+// --- pull-request column extraction ---
+interface PrRow {
+  number: number;
+  title: string;
+  state: string;
+  author: string | null;
+  headRef: string | null;
+  baseRef: string | null;
+  additions: number | null;
+  deletions: number | null;
+  comments: number;
+  link: string | null;
+}
+
+const prStateColor: Record<string, string> = {
+  open: 'green',
+  merged: 'purple',
+  closed: 'red'
+};
+
+function pr(r: RawRecordView): PrRow {
+  const p = (r.payload ?? {}) as Record<string, any>;
+  const repo: string = p.repository_full_name ?? '';
+  const number: number = p.number ?? 0;
+  return {
+    number,
+    title: String(p.title ?? ''),
+    // GitHub reports merged PRs as "closed"; surface merged as its own state.
+    state: p.merged_at ? 'merged' : (p.state ?? 'unknown'),
+    author: p.author_login ?? null,
+    headRef: p.head_ref ?? null,
+    baseRef: p.base_ref ?? null,
+    additions: p.additions ?? null,
+    deletions: p.deletions ?? null,
+    comments: (p.comment_count ?? 0) + (p.review_comment_count ?? 0),
+    link: repo && number ? `https://github.com/${repo}/pull/${number}` : null
+  };
 }
 
 function pretty(payload: unknown) {

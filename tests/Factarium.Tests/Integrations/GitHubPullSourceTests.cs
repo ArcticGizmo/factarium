@@ -22,7 +22,7 @@ public class GitHubPullSourceTests
         Assert.Equal(1, sink.Facts.Count(f => f.EntityType == "review"));
         Assert.Equal(2, sink.Facts.Count(f => f.EntityType == "commit"));
 
-        // Raw JSON is stored verbatim; source ids come from the payloads.
+        // Source ids come from the (flattened) payloads.
         Assert.Contains(sink.Facts, f => f is { EntityType: "pull_request", SourceId: "11" });
         Assert.Contains(sink.Facts, f => f is { EntityType: "commit", SourceId: "acme/repo1@bbb" });
 
@@ -67,6 +67,49 @@ public class GitHubPullSourceTests
         Assert.False(root.TryGetProperty("node_id", out _));
         Assert.False(root.TryGetProperty("committer", out _));
         Assert.Equal(JsonValueKind.Object, root.ValueKind);
+
+        // Pull requests are flattened from the detail endpoint: author, branches,
+        // state and comment/diff stats as scalars, with no nested user/repo blobs.
+        var prFact = sink.Facts.Single(f => f is { EntityType: "pull_request", SourceId: "11" });
+        using var prDoc = JsonDocument.Parse(prFact.Payload);
+        var pr = prDoc.RootElement;
+
+        Assert.Equal(1, pr.GetProperty("number").GetInt32());
+        Assert.Equal("acme/repo1", pr.GetProperty("repository_full_name").GetString());
+        Assert.Equal("open", pr.GetProperty("state").GetString());
+        Assert.False(pr.GetProperty("draft").GetBoolean());
+        Assert.Equal(1, pr.GetProperty("author_id").GetInt64());
+        Assert.Equal("octo", pr.GetProperty("author_login").GetString());
+        Assert.Equal("main", pr.GetProperty("base_ref").GetString());
+        Assert.Equal("feature-1", pr.GetProperty("head_ref").GetString());
+        Assert.Equal("acme/repo1", pr.GetProperty("head_repo").GetString());
+        Assert.Equal(3, pr.GetProperty("comment_count").GetInt32());
+        Assert.Equal(2, pr.GetProperty("review_comment_count").GetInt32());
+        Assert.Equal(2, pr.GetProperty("changed_files").GetInt32());
+
+        Assert.False(pr.TryGetProperty("user", out _));
+        Assert.False(pr.TryGetProperty("base", out _));
+        Assert.False(pr.TryGetProperty("head", out _));
+        foreach (var property in pr.EnumerateObject())
+        {
+            Assert.NotEqual(JsonValueKind.Object, property.Value.ValueKind);
+        }
+
+        // Reviews are flattened too: reviewer/state/provenance as scalars, no user
+        // blob or body.
+        var reviewFact = sink.Facts.Single(f => f.EntityType == "review");
+        using var reviewDoc = JsonDocument.Parse(reviewFact.Payload);
+        var review = reviewDoc.RootElement;
+
+        Assert.Equal(111, review.GetProperty("id").GetInt64());
+        Assert.Equal("acme/repo1", review.GetProperty("repository_full_name").GetString());
+        Assert.Equal(1, review.GetProperty("pull_request_number").GetInt32());
+        Assert.Equal("octo", review.GetProperty("reviewer_login").GetString());
+        Assert.Equal(1, review.GetProperty("reviewer_id").GetInt64());
+        Assert.Equal("APPROVED", review.GetProperty("state").GetString());
+        Assert.Equal("dc8", review.GetProperty("commit_id").GetString());
+        Assert.False(review.TryGetProperty("user", out _));
+        Assert.False(review.TryGetProperty("body", out _));
     }
 
     [Fact]
@@ -127,8 +170,41 @@ public class GitHubPullSourceTests
                 """[{"id":11,"number":1,"state":"open","updated_at":"2026-07-10T00:00:00Z"}]""",
                 link: "<https://api.github.com/repos/acme/repo1/pulls?state=all&sort=updated&direction=desc&per_page=100&page=2>; rel=\"next\""),
 
+            ("/repos/acme/repo1/pulls/1", _) => StubHttpMessageHandler.Json(
+                """
+                {
+                  "id": 11, "number": 1, "state": "open", "title": "Add feature", "draft": false,
+                  "node_id": "PR_11",
+                  "user": { "login": "octo", "id": 1, "node_id": "U_1", "type": "User" },
+                  "base": { "ref": "main", "repo": { "full_name": "acme/repo1", "id": 1 } },
+                  "head": { "ref": "feature-1", "repo": { "full_name": "acme/repo1", "id": 1 } },
+                  "created_at": "2026-07-08T00:00:00Z",
+                  "updated_at": "2026-07-10T00:00:00Z",
+                  "closed_at": null, "merged_at": null, "merge_commit_sha": null,
+                  "comments": 3, "review_comments": 2,
+                  "additions": 10, "deletions": 4, "changed_files": 2, "commits": 5
+                }
+                """),
+
+            ("/repos/acme/repo1/pulls/2", _) => StubHttpMessageHandler.Json(
+                """
+                {
+                  "id": 12, "number": 2, "state": "closed", "title": "Fix bug", "draft": false,
+                  "user": { "login": "octo", "id": 1 },
+                  "base": { "ref": "main" },
+                  "head": { "ref": "fix-2" },
+                  "created_at": "2026-07-07T00:00:00Z",
+                  "updated_at": "2026-07-09T00:00:00Z",
+                  "closed_at": "2026-07-09T00:00:00Z",
+                  "merged_at": "2026-07-09T00:00:00Z",
+                  "merge_commit_sha": "mmm",
+                  "comments": 0, "review_comments": 0,
+                  "additions": 1, "deletions": 1, "changed_files": 1, "commits": 1
+                }
+                """),
+
             ("/repos/acme/repo1/pulls/1/reviews", _) => StubHttpMessageHandler.Json(
-                """[{"id":111,"state":"APPROVED","submitted_at":"2026-07-10T01:00:00Z"}]"""),
+                """[{"id":111,"state":"APPROVED","submitted_at":"2026-07-10T01:00:00Z","commit_id":"dc8","user":{"login":"octo","id":1,"node_id":"U_1"},"body":"lgtm"}]"""),
 
             ("/repos/acme/repo1/pulls/2/reviews", _) => StubHttpMessageHandler.Json("[]"),
 
