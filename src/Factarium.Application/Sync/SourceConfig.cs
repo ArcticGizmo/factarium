@@ -18,5 +18,8 @@ public sealed record JiraSourceConfig(
     DateTimeOffset? SyncSince,
     bool ScopedToken) : SourceConfig;
 
+/// <summary>Tempo connector config: the Jira project to scope worklogs to, and a history floor.</summary>
+public sealed record TempoSourceConfig(string? ProjectKey, DateTimeOffset? SyncSince) : SourceConfig;
+
 /// <summary>Claude Code connector config. Push-based, so it carries nothing today.</summary>
 public sealed record ClaudeSourceConfig : SourceConfig;

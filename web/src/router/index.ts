@@ -7,6 +7,7 @@ import ClaudeCodePage from '../features/claude-code/ClaudeCodePage.vue';
 import PeoplePage from '../features/people/PeoplePage.vue';
 import GitHubIntegrationsPage from '../features/integrations/GitHubIntegrationsPage.vue';
 import JiraIntegrationsPage from '../features/integrations/JiraIntegrationsPage.vue';
+import TempoIntegrationsPage from '../features/integrations/TempoIntegrationsPage.vue';
 import ClaudeIntegrationsPage from '../features/integrations/ClaudeIntegrationsPage.vue';
 import PipelinePage from '../features/integrations/PipelinePage.vue';
 import SyncActivityPage from '../features/integrations/SyncActivityPage.vue';
@@ -22,6 +23,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/integrations', redirect: '/integrations/github' },
   { path: '/integrations/github', name: 'integrations-github', component: GitHubIntegrationsPage },
   { path: '/integrations/jira', name: 'integrations-jira', component: JiraIntegrationsPage },
+  { path: '/integrations/tempo', name: 'integrations-tempo', component: TempoIntegrationsPage },
   { path: '/integrations/claude', name: 'integrations-claude', component: ClaudeIntegrationsPage },
   { path: '/integrations/activity', name: 'integrations-activity', component: SyncActivityPage },
   { path: '/integrations/pipeline', name: 'integrations-pipeline', component: PipelinePage },

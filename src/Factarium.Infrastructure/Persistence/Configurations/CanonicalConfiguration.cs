@@ -84,12 +84,75 @@ internal sealed class CanonicalIssueConfiguration : IEntityTypeConfiguration<Can
         builder.Property(x => x.ExternalId).HasMaxLength(128).IsRequired();
         builder.Property(x => x.Key).HasMaxLength(64).IsRequired();
         builder.Property(x => x.ProjectKey).HasMaxLength(64);
+        builder.Property(x => x.Title).HasMaxLength(1024);
+        builder.Property(x => x.IssueTypeId).HasMaxLength(64);
         builder.Property(x => x.IssueType).HasMaxLength(64);
         builder.Property(x => x.Status).HasMaxLength(64);
+        builder.Property(x => x.StatusCategory).HasMaxLength(64);
         builder.Property(x => x.AssigneeLogin).HasMaxLength(256);
+        builder.Property(x => x.ReporterLogin).HasMaxLength(256);
+        builder.Property(x => x.PrimaryDeveloperLogin).HasMaxLength(256);
+        builder.Property(x => x.ClosedByLogin).HasMaxLength(256);
+        builder.Property(x => x.SprintName).HasMaxLength(256);
         builder.HasIndex(x => new { x.Source, x.ExternalId }).IsUnique();
-        builder.HasIndex(x => x.ResolvedAt);
+        builder.HasIndex(x => x.ClosedAt);
         builder.HasIndex(x => x.AssigneeIdentityId);
+        builder.HasIndex(x => x.ReporterIdentityId);
+        builder.HasIndex(x => x.PrimaryDeveloperIdentityId);
+    }
+}
+
+internal sealed class CanonicalWorklogConfiguration : IEntityTypeConfiguration<CanonicalWorklog>
+{
+    public void Configure(EntityTypeBuilder<CanonicalWorklog> builder)
+    {
+        builder.ToTable("canonical_worklogs");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Source).HasMaxLength(64).IsRequired();
+        builder.Property(x => x.ExternalId).HasMaxLength(128).IsRequired();
+        builder.Property(x => x.IssueKey).HasMaxLength(64);
+        builder.Property(x => x.IssueExternalId).HasMaxLength(128);
+        builder.Property(x => x.AuthorLogin).HasMaxLength(256);
+        builder.Property(x => x.Description).HasMaxLength(2048);
+        builder.HasIndex(x => new { x.Source, x.ExternalId }).IsUnique();
+        builder.HasIndex(x => x.AuthorIdentityId);
+        builder.HasIndex(x => x.WorkDate);
+        builder.HasIndex(x => x.IssueKey);
+    }
+}
+
+internal sealed class CanonicalIssueSegmentConfiguration : IEntityTypeConfiguration<CanonicalIssueSegment>
+{
+    public void Configure(EntityTypeBuilder<CanonicalIssueSegment> builder)
+    {
+        builder.ToTable("canonical_issue_segments");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Source).HasMaxLength(64).IsRequired();
+        builder.Property(x => x.IssueKey).HasMaxLength(64).IsRequired();
+        builder.Property(x => x.IssueExternalId).HasMaxLength(128).IsRequired();
+        builder.Property(x => x.Kind).HasMaxLength(16).IsRequired();
+        builder.Property(x => x.Value).HasMaxLength(128);
+        builder.Property(x => x.Category).HasMaxLength(64);
+        builder.Property(x => x.AssigneeLogin).HasMaxLength(256);
+        builder.HasIndex(x => new { x.Source, x.IssueExternalId, x.Kind, x.StartedAt }).IsUnique();
+        builder.HasIndex(x => new { x.Source, x.IssueKey });
+        builder.HasIndex(x => x.AssigneeIdentityId);
+        builder.HasIndex(x => new { x.Kind, x.Category });
+    }
+}
+
+internal sealed class CanonicalIssueSprintMembershipConfiguration : IEntityTypeConfiguration<CanonicalIssueSprintMembership>
+{
+    public void Configure(EntityTypeBuilder<CanonicalIssueSprintMembership> builder)
+    {
+        builder.ToTable("canonical_issue_sprint_memberships");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Source).HasMaxLength(64).IsRequired();
+        builder.Property(x => x.IssueKey).HasMaxLength(64).IsRequired();
+        builder.Property(x => x.IssueExternalId).HasMaxLength(128).IsRequired();
+        builder.Property(x => x.SprintName).HasMaxLength(256);
+        builder.HasIndex(x => new { x.Source, x.IssueExternalId, x.SprintId, x.AddedAt }).IsUnique();
+        builder.HasIndex(x => x.SprintId);
     }
 }
 

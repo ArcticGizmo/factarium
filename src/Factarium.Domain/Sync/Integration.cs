@@ -88,6 +88,23 @@ public sealed class JiraIntegration : Integration
 }
 
 /// <summary>
+/// Tempo Timesheets connection: logged effort for a Jira project, pulled from the Tempo
+/// Cloud API (api.tempo.io) with its own Bearer token (the base <see cref="Integration.EncryptedCredential"/>).
+/// Standalone from Jira — different host and credential — but its worklog authors are Jira
+/// account ids, so they resolve to the same Person.
+/// </summary>
+public sealed class TempoIntegration : Integration
+{
+    public const string TypeName = "tempo";
+
+    /// <summary>The Jira project key whose worklogs are synced, e.g. "QAI".</summary>
+    public string? ProjectKey { get; set; }
+
+    /// <summary>Historical floor for the first sync: worklogs before this date are not pulled.</summary>
+    public DateTimeOffset? SyncSince { get; set; }
+}
+
+/// <summary>
 /// Claude Code usage connection. Push-based: Claude Code exports OTEL metrics to
 /// Factarium's ingestion endpoint, so there is no polling configuration or credential.
 /// </summary>

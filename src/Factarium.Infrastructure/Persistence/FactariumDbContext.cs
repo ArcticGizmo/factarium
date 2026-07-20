@@ -41,7 +41,13 @@ public class FactariumDbContext(DbContextOptions<FactariumDbContext> options)
 
     public DbSet<CanonicalIssue> CanonicalIssues => Set<CanonicalIssue>();
 
+    public DbSet<CanonicalIssueSegment> CanonicalIssueSegments => Set<CanonicalIssueSegment>();
+
+    public DbSet<CanonicalIssueSprintMembership> CanonicalIssueSprintMemberships => Set<CanonicalIssueSprintMembership>();
+
     public DbSet<CanonicalUsageMetric> CanonicalUsageMetrics => Set<CanonicalUsageMetric>();
+
+    public DbSet<CanonicalWorklog> CanonicalWorklogs => Set<CanonicalWorklog>();
 
     public DbSet<DailyMetric> DailyMetrics => Set<DailyMetric>();
 

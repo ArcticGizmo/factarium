@@ -193,6 +193,7 @@ internal sealed class IntegrationSyncService(
     {
         GitHubIntegration gh => new GitHubSourceConfig(gh.Org, gh.Repos),
         JiraIntegration jira => new JiraSourceConfig(jira.BaseUrl, jira.Email, jira.ProjectKey, jira.SyncSince, jira.ScopedToken),
+        TempoIntegration tempo => new TempoSourceConfig(tempo.ProjectKey, tempo.SyncSince),
         ClaudeIntegration => new ClaudeSourceConfig(),
         _ => null,
     };

@@ -87,14 +87,41 @@ internal sealed class DailyMetricsAggregateService(
 
         foreach (var issue in await db.CanonicalIssues.AsNoTracking().ToListAsync(cancellationToken))
         {
-            if (issue is { IsResolved: true, ResolvedAt: not null })
+            if (issue is { IsClosed: true, ClosedAt: not null })
             {
-                AddCount("issues_resolved", issue.ResolvedAt, issue.AssigneeIdentityId);
+                AddCount("issues_resolved", issue.ClosedAt, issue.AssigneeIdentityId);
                 if (issue.CreatedAt is not null)
                 {
-                    AddAverage("issue_cycle_time_hours", issue.ResolvedAt, (issue.ResolvedAt.Value - issue.CreatedAt.Value).TotalHours);
+                    AddAverage("issue_cycle_time_hours", issue.ClosedAt, (issue.ClosedAt.Value - issue.CreatedAt.Value).TotalHours);
                 }
             }
+        }
+
+        // Changelog flow: time-in-status (by category) and blocked time, attributed to the
+        // assignee at the time. A segment's full duration is allocated to the day it ended
+        // (or today, for still-open segments).
+        foreach (var segment in await db.CanonicalIssueSegments.AsNoTracking().ToListAsync(cancellationToken))
+        {
+            var when = segment.EndedAt ?? now;
+            var hours = segment.DurationSeconds / 3600.0;
+            var metric = segment.Kind == "flagged" ? "issue_blocked_hours" : StatusMetric(segment.Category);
+            if (metric is not null)
+            {
+                AddValue(metric, when, segment.AssigneeIdentityId, hours);
+            }
+        }
+
+        // Tempo logged effort: hours booked per author per work date (billable tracked too).
+        foreach (var worklog in await db.CanonicalWorklogs.AsNoTracking().ToListAsync(cancellationToken))
+        {
+            if (worklog.WorkDate is not { } workDate)
+            {
+                continue;
+            }
+
+            var when = new DateTimeOffset(workDate, TimeOnly.MinValue, TimeSpan.Zero);
+            AddValue("tempo_time_logged_hours", when, worklog.AuthorIdentityId, worklog.TimeSpentSeconds / 3600.0);
+            AddValue("tempo_billable_hours", when, worklog.AuthorIdentityId, worklog.BillableSeconds / 3600.0);
         }
 
         // Claude Code OTEL usage: sum each metric value per day/actor.
@@ -141,6 +168,15 @@ internal sealed class DailyMetricsAggregateService(
         counts.TryGetValue(key, out var current);
         counts[key] = (current.Value + value, label ?? current.Label);
     }
+
+    // Maps a Jira status category name to its time-in-status metric key (null = unknown category).
+    private static string? StatusMetric(string? category) => category?.ToLowerInvariant() switch
+    {
+        "to do" => "issue_time_todo_hours",
+        "in progress" => "issue_time_in_progress_hours",
+        "done" => "issue_time_done_hours",
+        _ => null,
+    };
 
     private async Task<List<DailyMetric>> BuildReviewLatencyAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {

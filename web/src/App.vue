@@ -14,6 +14,7 @@
         <NavGroup icon="mdi-transit-connection-variant" title="Integrations">
           <NavItem to="/integrations/github" icon="mdi-github" title="GitHub" />
           <NavItem to="/integrations/jira" icon="mdi-jira" title="Jira" />
+          <NavItem to="/integrations/tempo" icon="mdi-clock-outline" title="Tempo" />
           <NavItem to="/integrations/claude" icon="mdi-creation" title="Claude" />
           <NavItem to="/integrations/activity" icon="mdi-history" title="Sync Activity" />
           <NavItem to="/integrations/pipeline" icon="mdi-sync" title="Pipeline" />

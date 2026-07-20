@@ -15,6 +15,7 @@ internal sealed class IntegrationConfiguration : IEntityTypeConfiguration<Integr
         builder.HasDiscriminator(x => x.Type)
             .HasValue<GitHubIntegration>(GitHubIntegration.TypeName)
             .HasValue<JiraIntegration>(JiraIntegration.TypeName)
+            .HasValue<TempoIntegration>(TempoIntegration.TypeName)
             .HasValue<ClaudeIntegration>(ClaudeIntegration.TypeName);
 
         builder.Property(x => x.Type).HasMaxLength(64);
@@ -44,6 +45,14 @@ internal sealed class JiraIntegrationConfiguration : IEntityTypeConfiguration<Ji
     {
         builder.Property(x => x.BaseUrl).HasMaxLength(512);
         builder.Property(x => x.Email).HasMaxLength(256);
+        builder.Property(x => x.ProjectKey).HasMaxLength(64);
+    }
+}
+
+internal sealed class TempoIntegrationConfiguration : IEntityTypeConfiguration<TempoIntegration>
+{
+    public void Configure(EntityTypeBuilder<TempoIntegration> builder)
+    {
         builder.Property(x => x.ProjectKey).HasMaxLength(64);
     }
 }

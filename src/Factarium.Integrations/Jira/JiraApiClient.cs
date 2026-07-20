@@ -101,10 +101,10 @@ public sealed class JiraApiClient(HttpClient http, TimeProvider clock, ILogger<J
     }
 
     /// <summary>
-    /// Resolves the custom-field ids for story points and sprint by name (they vary
-    /// per instance). Returns nulls when a field isn't present.
+    /// Resolves the custom-field ids for story points, sprint, and primary developer by
+    /// name (they vary per instance). Returns nulls when a field isn't present.
     /// </summary>
-    public async Task<(string? StoryPointsFieldId, string? SprintFieldId)> DiscoverFieldIdsAsync(
+    public async Task<(string? StoryPointsFieldId, string? SprintFieldId, string? PrimaryDeveloperFieldId)> DiscoverFieldIdsAsync(
         string apiRoot, string email, string token, CancellationToken cancellationToken)
     {
         var url = $"{apiRoot.TrimEnd('/')}/rest/api/3/field";
@@ -114,6 +114,7 @@ public sealed class JiraApiClient(HttpClient http, TimeProvider clock, ILogger<J
         using var doc = await ParseAsync(response, cancellationToken);
         string? storyPoints = null;
         string? sprint = null;
+        string? primaryDeveloper = null;
 
         foreach (var field in doc.RootElement.EnumerateArray())
         {
@@ -135,9 +136,13 @@ public sealed class JiraApiClient(HttpClient http, TimeProvider clock, ILogger<J
             {
                 sprint = id;
             }
+            else if (primaryDeveloper is null && name.Equals("Primary Developer", StringComparison.OrdinalIgnoreCase))
+            {
+                primaryDeveloper = id;
+            }
         }
 
-        return (storyPoints, sprint);
+        return (storyPoints, sprint, primaryDeveloper);
     }
 
     /// <summary>Yields every changelog history entry for an issue (paged by startAt/total).</summary>

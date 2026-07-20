@@ -178,6 +178,102 @@
           </tbody>
         </v-table>
 
+        <!-- Issue-specific extracted columns (the id is dropped; the key links to Jira). -->
+        <v-table v-else-if="selectedType === 'issue'" density="comfortable">
+          <thead>
+            <tr>
+              <th style="width: 110px">Key</th>
+              <th>Title</th>
+              <th style="width: 150px">Status</th>
+              <th style="width: 80px">Points</th>
+              <th style="width: 160px">Primary dev</th>
+              <th style="width: 200px">Sprints</th>
+              <th style="width: 100px">Comments</th>
+              <th style="width: 70px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="records.length === 0">
+              <td colspan="8" class="text-medium-emphasis text-caption py-4">No issues in this range.</td>
+            </tr>
+            <tr v-for="r in records" :key="r.id">
+              <td>
+                <a v-if="issue(r).link" :href="issue(r).link!" target="_blank" rel="noopener">
+                  <code>{{ issue(r).key }}</code>
+                </a>
+                <code v-else>{{ issue(r).key }}</code>
+              </td>
+              <td>{{ issue(r).title }}</td>
+              <td>
+                <v-chip
+                  v-if="issue(r).status"
+                  size="x-small"
+                  variant="flat"
+                  :color="issueStatusColor[issue(r).statusCategory ?? ''] || 'grey'"
+                >
+                  {{ issue(r).status }}
+                </v-chip>
+                <span v-else class="text-medium-emphasis">—</span>
+              </td>
+              <td>
+                <span v-if="issue(r).storyPoints !== null">{{ issue(r).storyPoints }}</span>
+                <span v-else class="text-medium-emphasis">—</span>
+              </td>
+              <td class="text-caption">{{ issue(r).primaryDeveloper || '—' }}</td>
+              <td class="text-caption">{{ issue(r).sprints || '—' }}</td>
+              <td>{{ issue(r).commentCount }}</td>
+              <td>
+                <v-btn size="x-small" variant="text" @click="openRaw(r)">Raw</v-btn>
+              </td>
+            </tr>
+          </tbody>
+        </v-table>
+
+        <!-- Sprint-specific extracted columns. -->
+        <v-table v-else-if="selectedType === 'sprint'" density="comfortable">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th style="width: 150px">Velocity report</th>
+              <th style="width: 220px">Range</th>
+              <th style="width: 120px">State</th>
+              <th style="width: 70px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="records.length === 0">
+              <td colspan="5" class="text-medium-emphasis text-caption py-4">No sprints in this range.</td>
+            </tr>
+            <tr v-for="r in records" :key="r.id">
+              <td>
+                <a v-if="sprint(r).link" :href="sprint(r).link!" target="_blank" rel="noopener">{{ sprint(r).name }}</a>
+                <span v-else>{{ sprint(r).name }}</span>
+              </td>
+              <td>
+                <a v-if="sprint(r).velocityLink" :href="sprint(r).velocityLink!" target="_blank" rel="noopener">
+                  Velocity <span aria-hidden="true">↗</span>
+                </a>
+                <span v-else class="text-medium-emphasis">—</span>
+              </td>
+              <td class="text-caption">{{ sprint(r).range || '—' }}</td>
+              <td>
+                <v-chip
+                  v-if="sprint(r).state"
+                  size="x-small"
+                  variant="flat"
+                  :color="sprintStateColor[sprint(r).state ?? ''] || 'grey'"
+                >
+                  {{ sprint(r).state }}
+                </v-chip>
+                <span v-else class="text-medium-emphasis">—</span>
+              </td>
+              <td>
+                <v-btn size="x-small" variant="text" @click="openRaw(r)">Raw</v-btn>
+              </td>
+            </tr>
+          </tbody>
+        </v-table>
+
         <!-- Generic view for other entity types -->
         <v-table v-else density="comfortable">
           <thead>
@@ -300,6 +396,8 @@ const backTo = computed(() => {
       return '/integrations/github';
     case 'jira':
       return '/integrations/jira';
+    case 'tempo':
+      return '/integrations/tempo';
     case 'claude-code':
       return '/integrations/claude';
     default:
@@ -488,6 +586,82 @@ function pr(r: RawRecordView): PrRow {
     deletions: p.deletions ?? null,
     comments: (p.comment_count ?? 0) + (p.review_comment_count ?? 0),
     link: repo && number ? `https://github.com/${repo}/pull/${number}` : null
+  };
+}
+
+// --- issue column extraction ---
+interface IssueRow {
+  key: string;
+  title: string;
+  status: string | null;
+  statusCategory: string | null;
+  storyPoints: number | null;
+  primaryDeveloper: string | null;
+  sprints: string;
+  commentCount: number;
+  link: string | null;
+}
+
+// Jira status categories: new (To Do), indeterminate (In Progress), done (Done).
+const issueStatusColor: Record<string, string> = {
+  new: 'grey',
+  indeterminate: 'blue',
+  done: 'green'
+};
+
+function issue(r: RawRecordView): IssueRow {
+  const p = (r.payload ?? {}) as Record<string, any>;
+  const key: string = p.key ?? r.sourceId ?? '';
+  const sprints: any[] = Array.isArray(p.sprints) ? p.sprints : [];
+  const site = summary.value?.siteUrl?.replace(/\/$/, '');
+  return {
+    key,
+    title: String(p.title ?? ''),
+    status: p.status ?? null,
+    statusCategory: p.status_category_key ?? null,
+    storyPoints: typeof p.story_points === 'number' ? p.story_points : null,
+    primaryDeveloper: p.primary_developer_name ?? null,
+    sprints: sprints
+      .map((s) => s?.name)
+      .filter(Boolean)
+      .join(', '),
+    commentCount: p.comment_count ?? 0,
+    link: site && key ? `${site}/browse/${key}` : null
+  };
+}
+
+// --- sprint column extraction ---
+interface SprintRow {
+  name: string;
+  state: string | null;
+  range: string;
+  link: string | null; // the sprint's board
+  velocityLink: string | null; // sprint retrospective/velocity report
+}
+
+const sprintStateColor: Record<string, string> = {
+  active: 'green',
+  closed: 'grey',
+  future: 'blue'
+};
+
+function sprint(r: RawRecordView): SprintRow {
+  const p = (r.payload ?? {}) as Record<string, any>;
+  const site = summary.value?.siteUrl?.replace(/\/$/, '');
+  const projectKey = summary.value?.projectKey;
+  const boardId = p.board_id ?? null;
+  const id = p.id ?? r.sourceId;
+  // Board and report URLs need the site, project, and board; skip the link if any is missing.
+  const boardUrl =
+    site && projectKey && boardId ? `${site}/jira/software/c/projects/${projectKey}/boards/${boardId}` : null;
+  const day = (v: unknown) => (typeof v === 'string' ? v.slice(0, 10) : null);
+  const [start, end] = [day(p.start_date), day(p.end_date)];
+  return {
+    name: String(p.name ?? r.sourceId ?? ''),
+    state: p.state ?? null,
+    range: start && end ? `${start} → ${end}` : (start ?? end ?? ''),
+    link: boardUrl,
+    velocityLink: boardUrl && id ? `${boardUrl}/reports/sprint-retrospective?sprint=${id}` : null
   };
 }
 

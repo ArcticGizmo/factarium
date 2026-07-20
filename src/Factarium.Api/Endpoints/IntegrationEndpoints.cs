@@ -38,6 +38,22 @@ public sealed record UpdateJiraIntegrationRequest(
     bool ScopedToken,
     string? Credential);
 
+public sealed record CreateTempoIntegrationRequest(
+    string Name,
+    string? Cron,
+    bool Enabled,
+    string? ProjectKey,
+    DateTimeOffset? SyncSince,
+    string? Credential);
+
+public sealed record UpdateTempoIntegrationRequest(
+    string Name,
+    string? Cron,
+    bool Enabled,
+    string? ProjectKey,
+    DateTimeOffset? SyncSince,
+    string? Credential);
+
 public sealed record CreateClaudeIntegrationRequest(
     string Name,
     bool Enabled);
@@ -236,6 +252,65 @@ public static class IntegrationEndpoints
             return Results.NoContent();
         });
 
+        group.MapPost("tempo", (
+            CreateTempoIntegrationRequest request,
+            FactariumDbContext db,
+            ICredentialProtector protector,
+            IIntegrationScheduler scheduler,
+            TimeProvider clock,
+            CancellationToken ct) =>
+            CreateAsync(
+                new TempoIntegration
+                {
+                    Name = request.Name,
+                    Enabled = request.Enabled,
+                    ScheduleCron = request.Cron,
+                    ProjectKey = Blank(request.ProjectKey),
+                    SyncSince = request.SyncSince,
+                },
+                request.Credential, db, protector, scheduler, clock, ct));
+
+        group.MapPut("tempo/{id:guid}", async (
+            Guid id,
+            UpdateTempoIntegrationRequest request,
+            FactariumDbContext db,
+            ICredentialProtector protector,
+            IIntegrationScheduler scheduler,
+            CancellationToken ct) =>
+        {
+            var integration = await db.Integrations.FindAsync([id], ct);
+            if (integration is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (integration is not TempoIntegration tempo)
+            {
+                return Results.BadRequest("Integration is not a Tempo connection.");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                return Results.BadRequest("Name is required.");
+            }
+
+            tempo.Name = request.Name;
+            tempo.Enabled = request.Enabled;
+            tempo.ScheduleCron = Blank(request.Cron);
+            tempo.ProjectKey = Blank(request.ProjectKey);
+            tempo.SyncSince = request.SyncSince;
+            if (!string.IsNullOrWhiteSpace(request.Credential))
+            {
+                tempo.EncryptedCredential = protector.Protect(request.Credential);
+            }
+
+            await db.SaveChangesAsync(ct);
+
+            // Reschedules or unschedules based on the new enabled/cron state.
+            await scheduler.ScheduleAsync(tempo, ct);
+            return Results.NoContent();
+        });
+
         group.MapPost("claude", (
             CreateClaudeIntegrationRequest request,
             FactariumDbContext db,
@@ -314,6 +389,10 @@ public static class IntegrationEndpoints
                 integration.Type,
                 EntityTypes = entityTypes,
                 Repository = repository,
+                // Jira site URL + project key, so the records view can link issue keys to
+                // /browse/{key} and build board/sprint report URLs.
+                SiteUrl = (integration as JiraIntegration)?.BaseUrl,
+                ProjectKey = (integration as JiraIntegration)?.ProjectKey,
             });
         });
 
@@ -505,6 +584,7 @@ public static class IntegrationEndpoints
     {
         GitHubIntegration gh => new { gh.Org, gh.Repos },
         JiraIntegration jira => new { jira.BaseUrl, jira.Email, jira.ProjectKey, jira.SyncSince, jira.ScopedToken },
+        TempoIntegration tempo => new { tempo.ProjectKey, tempo.SyncSince },
         _ => null,
     };
 

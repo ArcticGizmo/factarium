@@ -56,6 +56,7 @@
                 View records
               </v-btn>
               <SyncMenu :integration="i" @synced="load" />
+              <PurgeMenu :integration="i" @purged="load" />
               <v-btn size="x-small" variant="text" color="red" @click="remove(i.id)">Delete</v-btn>
             </div>
           </td>
@@ -72,6 +73,7 @@ import { ref, computed, onMounted } from 'vue';
 import BasePage from '../../components/BasePage.vue';
 import GitHubIntegrationDialog from './GitHubIntegrationDialog.vue';
 import SyncMenu from './SyncMenu.vue';
+import PurgeMenu from './PurgeMenu.vue';
 import type { Integration, GitHubConfig } from '../../types';
 import { useIntegrations } from './useIntegrations';
 import { formatDateTime as fmt, formatRelative } from '../../utils/datetime';

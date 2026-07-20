@@ -51,6 +51,8 @@ public static class DependencyInjection
         services.AddScoped<ISampleDataSeeder, SampleDataSeeder>();
         services.AddScoped<GitHubTransformService>();
         services.AddScoped<JiraTransformService>();
+        services.AddScoped<JiraChangelogTransformService>();
+        services.AddScoped<TempoTransformService>();
         services.AddScoped<ClaudeOtelTransformService>();
         services.AddScoped<ITransformService, CompositeTransformService>();
         services.AddScoped<IAggregateService, DailyMetricsAggregateService>();

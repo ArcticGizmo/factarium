@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Factarium.Application.Sync;
 using Microsoft.Extensions.Logging;
 
@@ -24,14 +25,19 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
     private const string DevLinksCursorKey = "devlinks:since";
     private const string StoryPointsFieldKey = "field:storypoints";
     private const string SprintFieldKey = "field:sprint";
+    private const string PrimaryDevFieldKey = "field:primarydev";
     private const string CloudIdKey = "meta:cloudId";
 
     // Records committed (and cursor advanced) every this many, so a mid-entity failure
     // leaves prior batches persisted and resumable.
     private const int BatchSize = 200;
 
+    // Requested from the API and kept by FlattenIssue — nothing else is returned. "comment"
+    // is the only heavy field (the search endpoint has no count-only option, so we ask for it
+    // and keep just comment.total). The story-points, sprint, and primary-developer custom
+    // fields are appended per-instance in BuildFields once their ids are discovered.
     private static readonly string[] BaseFields =
-        ["summary", "status", "issuetype", "assignee", "created", "updated", "resolutiondate", "project", "parent"];
+        ["summary", "status", "issuetype", "assignee", "reporter", "created", "updated", "resolutiondate", "project", "comment"];
 
     public string Type => Source;
 
@@ -113,8 +119,9 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
             apiRoot = $"https://api.atlassian.com/ex/jira/{cloudId}";
         }
 
-        var (storyPointsFieldId, sprintFieldId) = await ResolveFieldIdsAsync(context, apiRoot, email, token, cancellationToken);
-        return (new JiraPrep(config, apiRoot, email, token, storyPointsFieldId, sprintFieldId), null);
+        var (storyPointsFieldId, sprintFieldId, primaryDevFieldId) =
+            await ResolveFieldIdsAsync(context, apiRoot, email, token, cancellationToken);
+        return (new JiraPrep(config, apiRoot, email, token, storyPointsFieldId, sprintFieldId, primaryDevFieldId), null);
     }
 
     private sealed record JiraPrep(
@@ -123,7 +130,8 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
         string Email,
         string Token,
         string? StoryPointsFieldId,
-        string? SprintFieldId);
+        string? SprintFieldId,
+        string? PrimaryDeveloperFieldId);
 
     // "issue": fetch changed issues from the API and write them, advancing issues:updated.
     private async Task<SyncResult> SyncIssuesAsync(SyncContext context, JiraPrep prep, CancellationToken cancellationToken)
@@ -146,7 +154,7 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
             }
 
             var updated = issue.TryGetProperty("fields", out var f) ? ParseDateElement(f, "updated") : null;
-            batch.Add(new RawFact(Source, "issue", id, issue.GetRawText(), updated));
+            batch.Add(new RawFact(Source, "issue", id, FlattenIssue(issue, prep), updated));
             if (updated is not null && (maxUpdated is null || updated > maxUpdated))
             {
                 maxUpdated = updated;
@@ -179,10 +187,7 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
         {
             using (var doc = JsonDocument.Parse(issue.Payload))
             {
-                if (doc.RootElement.TryGetProperty("fields", out var fields))
-                {
-                    CollectSprints(fields, prep.SprintFieldId, sprints);
-                }
+                CollectSprints(doc.RootElement, sprints);
             }
 
             mark = issue.SourceUpdatedAt ?? mark;
@@ -300,23 +305,29 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
         BaseFields
             .Append(prep.StoryPointsFieldId)
             .Append(prep.SprintFieldId)
+            .Append(prep.PrimaryDeveloperFieldId)
             .Where(f => !string.IsNullOrWhiteSpace(f))
             .Select(f => f!)
             .ToArray();
 
-    private async Task<(string? StoryPoints, string? Sprint)> ResolveFieldIdsAsync(
+    private async Task<(string? StoryPoints, string? Sprint, string? PrimaryDev)> ResolveFieldIdsAsync(
         SyncContext context, string apiRoot, string email, string token, CancellationToken cancellationToken)
     {
         var storyPoints = context.Cursor.Get(StoryPointsFieldKey);
         var sprint = context.Cursor.Get(SprintFieldKey);
-        if (!string.IsNullOrWhiteSpace(storyPoints) && !string.IsNullOrWhiteSpace(sprint))
+        var primaryDev = context.Cursor.Get(PrimaryDevFieldKey);
+        if (!string.IsNullOrWhiteSpace(storyPoints)
+            && !string.IsNullOrWhiteSpace(sprint)
+            && !string.IsNullOrWhiteSpace(primaryDev))
         {
-            return (storyPoints, sprint);
+            return (storyPoints, sprint, primaryDev);
         }
 
-        var (discoveredStoryPoints, discoveredSprint) = await client.DiscoverFieldIdsAsync(apiRoot, email, token, cancellationToken);
+        var (discoveredStoryPoints, discoveredSprint, discoveredPrimaryDev) =
+            await client.DiscoverFieldIdsAsync(apiRoot, email, token, cancellationToken);
         storyPoints ??= discoveredStoryPoints;
         sprint ??= discoveredSprint;
+        primaryDev ??= discoveredPrimaryDev;
 
         if (!string.IsNullOrWhiteSpace(storyPoints))
         {
@@ -328,8 +339,143 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
             context.Cursor.Set(SprintFieldKey, sprint);
         }
 
-        return (storyPoints, sprint);
+        if (!string.IsNullOrWhiteSpace(primaryDev))
+        {
+            context.Cursor.Set(PrimaryDevFieldKey, primaryDev);
+        }
+
+        return (storyPoints, sprint, primaryDev);
     }
+
+    /// <summary>
+    /// Flattens a Jira issue into the tight, root-level projection Factarium stores: identity
+    /// (id, key, title), type (id + name), status (workflow name plus the category "main type"
+    /// and its key for done-detection), story points, the assignee/reporter/primary-developer
+    /// accounts, comment count, lifecycle timestamps, project key, and the sprint objects the
+    /// derived "sprint" entity needs. The description (ADF) and every nested API blob are
+    /// discarded — mirrors the GitHub flatten step so bronze isn't a raw dump.
+    /// </summary>
+    private static string FlattenIssue(JsonElement issue, JiraPrep prep)
+    {
+        var fields = Obj(issue, "fields");
+        var status = Obj(fields, "status");
+        var statusCategory = Obj(status, "statusCategory");
+        var issueType = Obj(fields, "issuetype");
+        var project = Obj(fields, "project");
+
+        var node = new JsonObject
+        {
+            ["id"] = Str(issue, "id"),
+            ["key"] = Str(issue, "key"),
+            ["title"] = Str(fields, "summary"),
+            ["issue_type_id"] = Str(issueType, "id"),
+            ["issue_type"] = Str(issueType, "name"),
+            ["status"] = Str(status, "name"),
+            ["status_category"] = Str(statusCategory, "name"),
+            ["status_category_key"] = Str(statusCategory, "key"),
+            ["story_points"] = Number(fields, prep.StoryPointsFieldId),
+            ["comment_count"] = CommentTotal(fields),
+            ["created_at"] = Iso(fields, "created"),
+            ["updated_at"] = Iso(fields, "updated"),
+            ["closed_at"] = Iso(fields, "resolutiondate"),
+            ["project_key"] = Str(project, "key"),
+            ["sprints"] = SprintArray(fields, prep.SprintFieldId),
+        };
+
+        AddAccount(node, "assignee", Obj(fields, "assignee"));
+        AddAccount(node, "reporter", Obj(fields, "reporter"));
+        AddAccount(node, "primary_developer", User(fields, prep.PrimaryDeveloperFieldId));
+
+        return node.ToJsonString();
+    }
+
+    // Sets {prefix}_id / {prefix}_name from a Jira user object's accountId / displayName.
+    private static void AddAccount(JsonObject node, string prefix, JsonElement account)
+    {
+        node[$"{prefix}_id"] = Str(account, "accountId");
+        node[$"{prefix}_name"] = Str(account, "displayName");
+    }
+
+    // Projects an issue's Sprint custom field into a compact array of sprint objects. Modern
+    // Jira returns full objects here (id, name, state, dates, boardId); legacy toString
+    // entries (non-object) are skipped. Empty when the field is absent or undiscovered.
+    private static JsonArray SprintArray(JsonElement fields, string? sprintFieldId)
+    {
+        var array = new JsonArray();
+        if (sprintFieldId is null
+            || !fields.TryGetProperty(sprintFieldId, out var value)
+            || value.ValueKind != JsonValueKind.Array)
+        {
+            return array;
+        }
+
+        foreach (var sprint in value.EnumerateArray())
+        {
+            if (sprint.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            array.Add(new JsonObject
+            {
+                ["id"] = LongValue(sprint, "id"),
+                ["name"] = Str(sprint, "name"),
+                ["state"] = Str(sprint, "state"),
+                ["board_id"] = LongValue(sprint, "boardId"),
+                ["start_date"] = Iso(sprint, "startDate"),
+                ["end_date"] = Iso(sprint, "endDate"),
+                ["complete_date"] = Iso(sprint, "completeDate"),
+                ["goal"] = Str(sprint, "goal"),
+            });
+        }
+
+        return array;
+    }
+
+    // The Jira issue-search endpoint has no count-only comment option, so we request the
+    // "comment" field and keep only its total, discarding the (ADF) bodies here.
+    private static int CommentTotal(JsonElement fields) =>
+        fields.ValueKind == JsonValueKind.Object
+        && fields.TryGetProperty("comment", out var comment)
+        && comment.ValueKind == JsonValueKind.Object
+        && comment.TryGetProperty("total", out var total)
+        && total.ValueKind == JsonValueKind.Number
+            ? total.GetInt32()
+            : 0;
+
+    private static JsonElement Obj(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Object
+            ? value
+            : default;
+
+    // A custom field whose value is a Jira user object (e.g. "Primary Developer").
+    private static JsonElement User(JsonElement fields, string? fieldId) =>
+        fieldId is not null ? Obj(fields, fieldId) : default;
+
+    private static string? Str(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    // Reads a numeric custom field (e.g. story points, which may be fractional) as a double.
+    private static JsonNode? Number(JsonElement element, string? property) =>
+        property is not null
+        && element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number
+            ? JsonValue.Create(value.GetDouble())
+            : null;
+
+    private static JsonNode? LongValue(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number
+            ? JsonValue.Create(value.GetInt64())
+            : null;
+
+    // Reads a Jira timestamp property and re-serializes it as a normalized UTC ISO-8601 string.
+    private static string? Iso(JsonElement element, string property) =>
+        ParseDateElement(element, property)?.ToString("o");
 
     private async Task<RawFact> BuildChangelogFactAsync(
         string apiRoot, string issueId, string email, string token, CancellationToken cancellationToken)
@@ -356,12 +502,11 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
         return new RawFact(Source, "issue_changelog", issueId, payload, latest);
     }
 
-    // Accumulates the distinct sprint objects embedded in an issue's Sprint field. Modern
-    // Jira returns full objects here (id, name, state, dates, boardId); legacy toString
-    // entries (non-object) are skipped.
-    private static void CollectSprints(JsonElement fields, string sprintFieldId, Dictionary<string, JsonElement> into)
+    // Accumulates the distinct sprint objects from a flattened issue's root-level "sprints"
+    // array (projected by FlattenIssue: id, name, state, dates, boardId, goal).
+    private static void CollectSprints(JsonElement issue, Dictionary<string, JsonElement> into)
     {
-        if (!fields.TryGetProperty(sprintFieldId, out var value) || value.ValueKind != JsonValueKind.Array)
+        if (!issue.TryGetProperty("sprints", out var value) || value.ValueKind != JsonValueKind.Array)
         {
             return;
         }
@@ -388,10 +533,18 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
         var facts = new List<RawFact>();
         foreach (var (id, sprint) in sprints)
         {
+            // Skip sprints that haven't started yet: a "future" sprint carries no
+            // velocity/throughput signal and only clutters the records.
+            if (string.Equals(Str(sprint, "state"), "future", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             // A sprint's effective end is its completion, else planned end, else start.
-            var endish = ParseDateElement(sprint, "completeDate")
-                         ?? ParseDateElement(sprint, "endDate")
-                         ?? ParseDateElement(sprint, "startDate");
+            // Keys are the snake_case ones FlattenIssue's SprintArray projects.
+            var endish = ParseDateElement(sprint, "complete_date")
+                         ?? ParseDateElement(sprint, "end_date")
+                         ?? ParseDateElement(sprint, "start_date");
 
             // Skip sprints that finished before the history floor.
             if (syncSince is not null && endish is not null && endish < syncSince)

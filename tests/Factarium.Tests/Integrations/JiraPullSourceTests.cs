@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Factarium.Application.Sync;
 using Factarium.Integrations.Jira;
 using Factarium.Tests.TestDoubles;
@@ -43,6 +44,8 @@ public class JiraPullSourceTests
         Assert.Contains(sink.Facts, f => f is { EntityType: "issue", SourceId: "1001" });
         Assert.Equal(2, sink.Facts.Count(f => f.EntityType == "issue_changelog"));
         Assert.Contains(sink.Facts, f => f is { EntityType: "sprint", SourceId: "5" });
+        // Future sprints (state "future", here QAI-2's Sprint 6) are not replicated.
+        Assert.DoesNotContain(sink.Facts, f => f is { EntityType: "sprint", SourceId: "6" });
         Assert.Contains(sink.Facts, f => f is { EntityType: "issue_devlinks", SourceId: "1001" });
 
         // Sprints are derived from the issue Sprint field, so the Agile API is never called
@@ -54,6 +57,24 @@ public class JiraPullSourceTests
         Assert.Equal(TimeSpan.Zero, issue1001.SourceUpdatedAt!.Value.Offset);
         Assert.Equal(DateTimeOffset.Parse("2026-07-10T12:00:00Z"), issue1001.SourceUpdatedAt);
 
+        // The issue is stored flattened (GitHub-style projection), not the raw Jira payload:
+        // flat root-level keys, no nested "fields" envelope, and no description (ADF).
+        using var issueDoc = JsonDocument.Parse(issue1001.Payload);
+        var flat = issueDoc.RootElement;
+        Assert.False(flat.TryGetProperty("fields", out _));
+        Assert.False(flat.TryGetProperty("description", out _));
+        Assert.Equal("Export button fails on Safari", flat.GetProperty("title").GetString());
+        Assert.Equal("10001", flat.GetProperty("issue_type_id").GetString());
+        Assert.Equal("Story", flat.GetProperty("issue_type").GetString());
+        Assert.Equal("Done", flat.GetProperty("status_category").GetString());
+        Assert.Equal("done", flat.GetProperty("status_category_key").GetString());
+        Assert.Equal(5, flat.GetProperty("story_points").GetDouble());
+        Assert.Equal(3, flat.GetProperty("comment_count").GetInt32());
+        Assert.Equal("acc-1", flat.GetProperty("assignee_id").GetString());
+        Assert.Equal("acc-2", flat.GetProperty("reporter_id").GetString());
+        Assert.Equal("acc-3", flat.GetProperty("primary_developer_id").GetString());
+        Assert.Equal(5, flat.GetProperty("sprints")[0].GetProperty("id").GetInt64());
+
         // JQL is scoped to the project and floored at the sync-since date. (JSON HTML-escapes
         // the quotes and ">=", so assert on the escaping-agnostic pieces.)
         Assert.NotNull(searchBody);
@@ -61,6 +82,13 @@ public class JiraPullSourceTests
         Assert.Contains("QAI", searchBody);
         Assert.Contains("updated", searchBody);
         Assert.Contains("2026-07-01", searchBody);
+
+        // The requested field list is minimized: reporter/comment and the discovered
+        // primary-developer custom field are requested; the unused "parent" is not.
+        Assert.Contains("reporter", searchBody);
+        Assert.Contains("comment", searchBody);
+        Assert.Contains("customfield_10050", searchBody);
+        Assert.DoesNotContain("parent", searchBody);
 
         // Cursor advances to the newest issue-updated time seen.
         Assert.Equal(
@@ -222,7 +250,8 @@ public class JiraPullSourceTests
                     [
                       { "id": "summary", "name": "Summary" },
                       { "id": "customfield_10016", "name": "Story point estimate" },
-                      { "id": "customfield_10020", "name": "Sprint" }
+                      { "id": "customfield_10020", "name": "Sprint" },
+                      { "id": "customfield_10050", "name": "Primary Developer" }
                     ]
                     """);
 
@@ -235,10 +264,14 @@ public class JiraPullSourceTests
                         { "id": "1001", "key": "QAI-1",
                           "fields": { "updated": "2026-07-10T22:00:00.000+1000",
                             "created": "2026-07-01T09:00:00.000+0000",
-                            "status": { "name": "Done", "statusCategory": { "key": "done" } },
+                            "summary": "Export button fails on Safari",
+                            "status": { "name": "Done", "statusCategory": { "key": "done", "name": "Done" } },
                             "assignee": { "accountId": "acc-1", "displayName": "Ada" },
-                            "issuetype": { "name": "Story" }, "project": { "key": "QAI" },
+                            "reporter": { "accountId": "acc-2", "displayName": "Bob" },
+                            "issuetype": { "id": "10001", "name": "Story" }, "project": { "key": "QAI" },
+                            "comment": { "total": 3 },
                             "customfield_10016": 5,
+                            "customfield_10050": { "accountId": "acc-3", "displayName": "Cid" },
                             "customfield_10020": [
                               { "id": 5, "name": "Sprint 5", "state": "closed", "boardId": 10,
                                 "startDate": "2026-07-02T09:00:00.000Z",
@@ -251,6 +284,10 @@ public class JiraPullSourceTests
                             "status": { "name": "In Progress", "statusCategory": { "key": "indeterminate" } },
                             "assignee": null,
                             "issuetype": { "name": "Bug" }, "project": { "key": "QAI" },
+                            "customfield_10020": [
+                              { "id": 6, "name": "Sprint 6", "state": "future", "boardId": 10,
+                                "startDate": "2026-08-01T09:00:00.000Z",
+                                "endDate": "2026-08-15T09:00:00.000Z" } ],
                             "resolutiondate": null } }
                       ]
                     }

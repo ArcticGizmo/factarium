@@ -108,6 +108,12 @@ export interface JiraConfig {
   scopedToken: boolean;
 }
 
+export interface TempoConfig {
+  projectKey: string | null;
+  // ISO date; the historical floor for the first worklog sync.
+  syncSince: string | null;
+}
+
 // One row from GET /api/integrations. `config` carries the type-specific fields
 // (null for Claude, which is push-based). Id is the backend Guid.
 export interface Integration {
@@ -127,7 +133,7 @@ export interface Integration {
   entities: string[];
   // Newest record source-timestamp per entity type, for spotting stale data (null = none yet).
   entityLatest: Record<string, string | null>;
-  config: GitHubConfig | JiraConfig | null;
+  config: GitHubConfig | JiraConfig | TempoConfig | null;
 }
 
 // --- /api/integrations/{id}/records ---
@@ -158,6 +164,10 @@ export interface RecordsSummary {
   entityTypes: RecordTypeCount[];
   // Present for GitHub integrations; shown in the header instead of a tab.
   repository: RepositorySummary | null;
+  // Present for Jira integrations; used to link issue keys to /browse/{key} and to build
+  // board / sprint-report URLs.
+  siteUrl: string | null;
+  projectKey: string | null;
 }
 
 export interface RawRecordView {

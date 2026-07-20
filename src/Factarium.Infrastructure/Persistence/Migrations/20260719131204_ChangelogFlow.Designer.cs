@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Factarium.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Factarium.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(FactariumDbContext))]
-    partial class FactariumDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260719131204_ChangelogFlow")]
+    partial class ChangelogFlow
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -537,66 +540,6 @@ namespace Factarium.Infrastructure.Persistence.Migrations
                     b.ToTable("canonical_usage_metrics", (string)null);
                 });
 
-            modelBuilder.Entity("Factarium.Domain.Canonical.CanonicalWorklog", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<Guid?>("AuthorIdentityId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("AuthorLogin")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<int>("BillableSeconds")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)");
-
-                    b.Property<string>("ExternalId")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<string>("IssueExternalId")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<string>("IssueKey")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<string>("Source")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<int>("TimeSpentSeconds")
-                        .HasColumnType("integer");
-
-                    b.Property<DateOnly?>("WorkDate")
-                        .HasColumnType("date");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AuthorIdentityId");
-
-                    b.HasIndex("IssueKey");
-
-                    b.HasIndex("WorkDate");
-
-                    b.HasIndex("Source", "ExternalId")
-                        .IsUnique();
-
-                    b.ToTable("canonical_worklogs", (string)null);
-                });
-
             modelBuilder.Entity("Factarium.Domain.Identity.AppUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -995,29 +938,6 @@ namespace Factarium.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasDiscriminator().HasValue("jira");
-                });
-
-            modelBuilder.Entity("Factarium.Domain.Sync.TempoIntegration", b =>
-                {
-                    b.HasBaseType("Factarium.Domain.Sync.Integration");
-
-                    b.Property<string>("ProjectKey")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<DateTimeOffset?>("SyncSince")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.ToTable("integrations", t =>
-                        {
-                            t.Property("ProjectKey")
-                                .HasColumnName("TempoIntegration_ProjectKey");
-
-                            t.Property("SyncSince")
-                                .HasColumnName("TempoIntegration_SyncSince");
-                        });
-
-                    b.HasDiscriminator().HasValue("tempo");
                 });
 
             modelBuilder.Entity("Factarium.Domain.People.SourceIdentity", b =>

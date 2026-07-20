@@ -9,13 +9,17 @@ using Microsoft.EntityFrameworkCore;
 namespace Factarium.Infrastructure.Transform;
 
 /// <summary>
-/// Turns raw Jira issue records into canonical issues, creating a "jira"
-/// SourceIdentity per assignee (accountId). These identities link to the same
-/// Person as GitHub identities, giving cross-source attribution.
+/// Turns the flattened Jira issue records (see <c>JiraPullSource.FlattenIssue</c>) into
+/// canonical issues. Every attributed account — assignee, reporter (createdBy), primary
+/// developer, and the closer derived from the changelog — becomes a "jira" SourceIdentity
+/// keyed by accountId. These identities link to the same Person as GitHub identities, giving
+/// cross-source attribution.
 /// </summary>
 internal sealed class JiraTransformService(FactariumDbContext db, TimeProvider clock)
 {
     private const string Source = "jira";
+
+    private sealed record Actor(string AccountId, string? DisplayName);
 
     public async Task<int> TransformAsync(CancellationToken cancellationToken)
     {
@@ -23,7 +27,14 @@ internal sealed class JiraTransformService(FactariumDbContext db, TimeProvider c
             .Where(r => r.Source == Source && r.EntityType == "issue")
             .ToListAsync(cancellationToken);
 
-        var identities = await EnsureIdentitiesAsync(records, cancellationToken);
+        var changelogs = await db.RawRecords
+            .Where(r => r.Source == Source && r.EntityType == "issue_changelog")
+            .ToListAsync(cancellationToken);
+
+        // Who closed each issue, from the changelog's resolution-set transitions.
+        var closers = BuildClosers(changelogs);
+
+        var identities = await EnsureIdentitiesAsync(records, closers.Values, cancellationToken);
 
         var existing = await db.CanonicalIssues
             .Where(i => i.Source == Source)
@@ -33,7 +44,6 @@ internal sealed class JiraTransformService(FactariumDbContext db, TimeProvider c
         {
             using var doc = JsonDocument.Parse(record.Payload);
             var root = doc.RootElement;
-            var fields = root.TryGetProperty("fields", out var f) ? f : default;
 
             if (!existing.TryGetValue(record.SourceId, out var issue))
             {
@@ -47,27 +57,161 @@ internal sealed class JiraTransformService(FactariumDbContext db, TimeProvider c
                 existing[record.SourceId] = issue;
             }
 
-            var (accountId, _) = Assignee(fields);
-            var resolvedAt = Date(fields, "resolutiondate");
+            var closedAt = Date(root, "closed_at");
+            var (sprintId, sprintName) = CurrentSprint(root);
 
             issue.Key = Str(root, "key") ?? issue.Key;
-            issue.ProjectKey = fields.TryGetProperty("project", out var p) ? Str(p, "key") : null;
-            issue.IssueType = fields.TryGetProperty("issuetype", out var it) ? Str(it, "name") : null;
-            issue.Status = fields.TryGetProperty("status", out var st) ? Str(st, "name") : null;
-            issue.ResolvedAt = resolvedAt;
-            issue.IsResolved = resolvedAt is not null || StatusCategoryIsDone(fields);
-            issue.CreatedAt = Date(fields, "created");
-            issue.UpdatedAt = Date(fields, "updated");
-            issue.AssigneeLogin = accountId;
-            issue.AssigneeIdentityId = accountId is not null && identities.TryGetValue(accountId, out var id) ? id : null;
+            issue.ProjectKey = Str(root, "project_key");
+            issue.Title = Str(root, "title");
+            issue.IssueTypeId = Str(root, "issue_type_id");
+            issue.IssueType = Str(root, "issue_type");
+            issue.Status = Str(root, "status");
+            issue.StatusCategory = Str(root, "status_category");
+            issue.IsClosed = closedAt is not null || Str(root, "status_category_key") == "done";
+            issue.StoryPoints = Number(root, "story_points");
+            issue.CommentCount = Int(root, "comment_count");
+            issue.CreatedAt = Date(root, "created_at");
+            issue.UpdatedAt = Date(root, "updated_at");
+            issue.ClosedAt = closedAt;
+            issue.SprintId = sprintId;
+            issue.SprintName = sprintName;
+
+            AssignActor(root, "assignee", identities,
+                (login, id) => { issue.AssigneeLogin = login; issue.AssigneeIdentityId = id; });
+            AssignActor(root, "reporter", identities,
+                (login, id) => { issue.ReporterLogin = login; issue.ReporterIdentityId = id; });
+            AssignActor(root, "primary_developer", identities,
+                (login, id) => { issue.PrimaryDeveloperLogin = login; issue.PrimaryDeveloperIdentityId = id; });
+
+            var closer = closers.TryGetValue(record.SourceId, out var c) ? c.AccountId : null;
+            issue.ClosedByLogin = closer;
+            issue.ClosedByIdentityId = Identity(closer, identities);
         }
 
         await db.SaveChangesAsync(cancellationToken);
         return records.Count;
     }
 
+    // Sets the login + resolved identity for a "{prefix}_id"/"{prefix}_name" account on the issue.
+    private static void AssignActor(
+        JsonElement root, string prefix, IReadOnlyDictionary<string, Guid> identities, Action<string?, Guid?> set)
+    {
+        var accountId = Str(root, $"{prefix}_id");
+        set(accountId, Identity(accountId, identities));
+    }
+
+    private static Guid? Identity(string? accountId, IReadOnlyDictionary<string, Guid> identities) =>
+        accountId is not null && identities.TryGetValue(accountId, out var id) ? id : null;
+
+    /// <summary>
+    /// The issue's current sprint: the one in the "active" state, else the most recent by
+    /// start date. Returns (null, null) when the issue has no sprints.
+    /// </summary>
+    private static (long? Id, string? Name) CurrentSprint(JsonElement root)
+    {
+        if (!root.TryGetProperty("sprints", out var sprints) || sprints.ValueKind != JsonValueKind.Array)
+        {
+            return (null, null);
+        }
+
+        JsonElement? best = null;
+        DateTimeOffset? bestStart = null;
+        foreach (var sprint in sprints.EnumerateArray())
+        {
+            if (sprint.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            // An active sprint always wins.
+            if (string.Equals(Str(sprint, "state"), "active", StringComparison.OrdinalIgnoreCase))
+            {
+                return (Long(sprint, "id"), Str(sprint, "name"));
+            }
+
+            var start = Date(sprint, "start_date");
+            if (best is null || (start is not null && (bestStart is null || start > bestStart)))
+            {
+                best = sprint;
+                bestStart = start;
+            }
+        }
+
+        return best is null ? (null, null) : (Long(best.Value, "id"), Str(best.Value, "name"));
+    }
+
+    /// <summary>
+    /// Maps issueId → the account that closed it, taken from the latest changelog history that
+    /// sets a resolution (Jira records a "resolution" field change when an issue is resolved).
+    /// </summary>
+    private static Dictionary<string, Actor> BuildClosers(List<RawRecord> changelogs)
+    {
+        var closers = new Dictionary<string, Actor>();
+
+        foreach (var record in changelogs)
+        {
+            using var doc = JsonDocument.Parse(record.Payload);
+            var root = doc.RootElement;
+            var issueId = Str(root, "issueId") ?? record.SourceId;
+            if (!root.TryGetProperty("histories", out var histories) || histories.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            Actor? closer = null;
+            DateTimeOffset? closedAt = null;
+            foreach (var history in histories.EnumerateArray())
+            {
+                if (!SetsResolution(history))
+                {
+                    continue;
+                }
+
+                var created = Date(history, "created");
+                if (closer is null || (created is not null && (closedAt is null || created > closedAt)))
+                {
+                    var author = history.TryGetProperty("author", out var a) && a.ValueKind == JsonValueKind.Object
+                        ? new Actor(Str(a, "accountId") ?? string.Empty, Str(a, "displayName"))
+                        : null;
+                    if (author is { AccountId.Length: > 0 })
+                    {
+                        closer = author;
+                        closedAt = created;
+                    }
+                }
+            }
+
+            if (closer is not null)
+            {
+                closers[issueId] = closer;
+            }
+        }
+
+        return closers;
+    }
+
+    // True when a history entry contains a "resolution" item transitioning to a non-empty value.
+    private static bool SetsResolution(JsonElement history)
+    {
+        if (!history.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        foreach (var item in items.EnumerateArray())
+        {
+            if (string.Equals(Str(item, "field"), "resolution", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrEmpty(Str(item, "to")))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private async Task<Dictionary<string, Guid>> EnsureIdentitiesAsync(
-        List<RawRecord> records, CancellationToken cancellationToken)
+        List<RawRecord> records, IEnumerable<Actor> closers, CancellationToken cancellationToken)
     {
         var existing = await db.SourceIdentities
             .Where(i => i.Source == Source)
@@ -79,12 +223,15 @@ internal sealed class JiraTransformService(FactariumDbContext db, TimeProvider c
         foreach (var record in records)
         {
             using var doc = JsonDocument.Parse(record.Payload);
-            var fields = doc.RootElement.TryGetProperty("fields", out var f) ? f : default;
-            var (accountId, displayName) = Assignee(fields);
-            if (accountId is not null)
-            {
-                discovered[accountId] = displayName;
-            }
+            var root = doc.RootElement;
+            Collect(discovered, Str(root, "assignee_id"), Str(root, "assignee_name"));
+            Collect(discovered, Str(root, "reporter_id"), Str(root, "reporter_name"));
+            Collect(discovered, Str(root, "primary_developer_id"), Str(root, "primary_developer_name"));
+        }
+
+        foreach (var closer in closers)
+        {
+            Collect(discovered, closer.AccountId, closer.DisplayName);
         }
 
         var now = clock.GetUtcNow();
@@ -112,23 +259,13 @@ internal sealed class JiraTransformService(FactariumDbContext db, TimeProvider c
         return map;
     }
 
-    private static (string? AccountId, string? DisplayName) Assignee(JsonElement fields)
+    private static void Collect(Dictionary<string, string?> into, string? accountId, string? displayName)
     {
-        if (fields.ValueKind == JsonValueKind.Object
-            && fields.TryGetProperty("assignee", out var assignee)
-            && assignee.ValueKind == JsonValueKind.Object)
+        if (!string.IsNullOrEmpty(accountId))
         {
-            return (Str(assignee, "accountId"), Str(assignee, "displayName"));
+            into[accountId] = displayName;
         }
-
-        return (null, null);
     }
-
-    private static bool StatusCategoryIsDone(JsonElement fields) =>
-        fields.ValueKind == JsonValueKind.Object
-        && fields.TryGetProperty("status", out var status)
-        && status.TryGetProperty("statusCategory", out var category)
-        && Str(category, "key") == "done";
 
     private static string? Str(JsonElement element, string property) =>
         element.ValueKind == JsonValueKind.Object
@@ -137,9 +274,29 @@ internal sealed class JiraTransformService(FactariumDbContext db, TimeProvider c
             ? value.GetString()
             : null;
 
+    private static int Int(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty(property, out var value)
+        && value.ValueKind == JsonValueKind.Number
+            ? value.GetInt32()
+            : 0;
+
+    private static double? Number(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty(property, out var value)
+        && value.ValueKind == JsonValueKind.Number
+            ? value.GetDouble()
+            : null;
+
+    private static long? Long(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty(property, out var value)
+        && value.ValueKind == JsonValueKind.Number
+            ? value.GetInt64()
+            : null;
+
     private static DateTimeOffset? Date(JsonElement element, string property) =>
-        // Jira returns local offsets; store UTC so canonical timestamps match the bronze
-        // tier and satisfy Postgres timestamptz (zero-offset only).
+        // Flattened payloads store UTC ISO-8601 strings; normalize defensively anyway.
         element.ValueKind == JsonValueKind.Object
         && element.TryGetProperty(property, out var value)
         && value.ValueKind == JsonValueKind.String
