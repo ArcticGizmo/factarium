@@ -3,6 +3,7 @@ import type { RouteRecordRaw } from 'vue-router';
 import OverviewPage from '../features/overview/OverviewPage.vue';
 import RepositoriesPage from '../features/repositories/RepositoriesPage.vue';
 import DeliveryPage from '../features/delivery/DeliveryPage.vue';
+import FlowPage from '../features/flow/FlowPage.vue';
 import ClaudeCodePage from '../features/claude-code/ClaudeCodePage.vue';
 import PeoplePage from '../features/people/PeoplePage.vue';
 import GitHubIntegrationsPage from '../features/integrations/GitHubIntegrationsPage.vue';
@@ -18,6 +19,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/overview', name: 'overview', component: OverviewPage },
   { path: '/repositories', name: 'repositories', component: RepositoriesPage },
   { path: '/delivery', name: 'delivery', component: DeliveryPage },
+  { path: '/flow', name: 'flow', component: FlowPage },
   { path: '/claude-code', name: 'claude-code', component: ClaudeCodePage },
   { path: '/people', name: 'people', component: PeoplePage },
   { path: '/integrations', redirect: '/integrations/github' },

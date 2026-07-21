@@ -28,6 +28,16 @@ export interface LiveSummary {
   };
 }
 
+// --- /api/live/issue-flow ---
+export interface IssueFlowData {
+  generatedAt: string;
+  // Cumulative hours per (assignee, status); status carries its workflow category.
+  timeInStatus: { assignee: string; status: string; category: string | null; hours: number }[];
+  // Cumulative blocked (flagged) hours per assignee.
+  blocked: { assignee: string; hours: number }[];
+  churn: { reopens: number; reassignments: number; backflow: number };
+}
+
 // --- /api/dashboards/repo-activity ---
 export interface RepoActivityData {
   totals: {

@@ -10,6 +10,7 @@
         <NavItem to="/overview" icon="mdi-pulse" title="Overview" />
         <NavItem to="/repositories" icon="mdi-source-branch" title="Repositories" />
         <NavItem to="/delivery" icon="mdi-rocket-launch-outline" title="Delivery" />
+        <NavItem to="/flow" icon="mdi-chart-timeline-variant" title="Flow" />
         <NavItem to="/claude-code" icon="mdi-robot-outline" title="Claude Code" />
         <NavItem to="/people" icon="mdi-account-group-outline" title="People" />
         <NavGroup icon="mdi-transit-connection-variant" title="Integrations">
