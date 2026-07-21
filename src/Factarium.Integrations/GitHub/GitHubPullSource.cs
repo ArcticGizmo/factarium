@@ -16,6 +16,12 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
 {
     private const string Source = "github";
 
+    // Records are written (and made visible) every this many so data lands in steady
+    // increments instead of one block at the end of a repo. Cursors still advance only
+    // once a stream is fully consumed — these feeds page newest-first, so advancing the
+    // cursor early would skip the older, not-yet-fetched tail if a run were interrupted.
+    private const int BatchSize = 100;
+
     // "Co-authored-by: Name <email>" trailers — GitHub's convention for crediting
     // additional authors on a commit. Matched case-insensitively, one per line.
     private static readonly Regex CoAuthorTrailer = new(
@@ -88,11 +94,28 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
         return SyncResult.Ok(written);
     }
 
+    // Writes and clears the batch once it reaches BatchSize (or when forced at the end of a
+    // stream), returning the rows written. Records land incrementally; the caller advances the
+    // cursor only after the whole stream is consumed.
+    private static async Task<int> FlushIfFullAsync(
+        SyncContext context, List<RawFact> batch, bool force, CancellationToken cancellationToken)
+    {
+        if (batch.Count == 0 || (!force && batch.Count < BatchSize))
+        {
+            return 0;
+        }
+
+        var written = await context.Sink.WriteAsync(context.IntegrationId, batch, cancellationToken);
+        batch.Clear();
+        return written;
+    }
+
     private async Task<(List<string> Repositories, int Written)> ResolveRepositoriesAsync(
         SyncContext context, GitHubSourceConfig config, string? token, CancellationToken cancellationToken)
     {
         var repositories = new List<string>();
         var facts = new List<RawFact>();
+        var written = 0;
 
         // Explicit repos: "owner/name" slugs.
         foreach (var slug in config.Repos.Where(r => !string.IsNullOrWhiteSpace(r)).Select(r => r.Trim()))
@@ -102,6 +125,7 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
             {
                 facts.Add(RepositoryFact(element));
                 repositories.Add(slug);
+                written += await FlushIfFullAsync(context, facts, force: false, cancellationToken);
             }
             else
             {
@@ -123,10 +147,11 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
 
                 facts.Add(RepositoryFact(repo));
                 repositories.Add(fullName);
+                written += await FlushIfFullAsync(context, facts, force: false, cancellationToken);
             }
         }
 
-        var written = await context.Sink.WriteAsync(context.IntegrationId, facts, cancellationToken);
+        written += await FlushIfFullAsync(context, facts, force: true, cancellationToken);
         return (repositories, written);
     }
 
@@ -136,6 +161,7 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
         var cursorKey = $"pulls:{fullName}";
         var lastCursor = ParseTimestamp(context.Cursor.Get(cursorKey));
         var facts = new List<RawFact>();
+        var written = 0;
         DateTimeOffset? maxUpdated = lastCursor;
 
         var url = $"repos/{fullName}/pulls?state=all&sort=updated&direction=desc&per_page=100";
@@ -170,9 +196,12 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
                     FlattenReview(review, fullName, number),
                     GetTimestamp(review, "submitted_at")));
             }
+
+            // Flush after each PR (never mid-PR) so a PR and its reviews land together.
+            written += await FlushIfFullAsync(context, facts, force: false, cancellationToken);
         }
 
-        var written = await context.Sink.WriteAsync(context.IntegrationId, facts, cancellationToken);
+        written += await FlushIfFullAsync(context, facts, force: true, cancellationToken);
         if (maxUpdated is not null && maxUpdated != lastCursor)
         {
             context.Cursor.Set(cursorKey, maxUpdated.Value.ToUniversalTime().ToString("o"));
@@ -187,6 +216,7 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
         var cursorKey = $"commits:{fullName}";
         var lastCursor = ParseTimestamp(context.Cursor.Get(cursorKey));
         var facts = new List<RawFact>();
+        var written = 0;
         DateTimeOffset? maxCommitted = lastCursor;
 
         var url = $"repos/{fullName}/commits?per_page=100";
@@ -206,9 +236,11 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
             {
                 maxCommitted = committedAt;
             }
+
+            written += await FlushIfFullAsync(context, facts, force: false, cancellationToken);
         }
 
-        var written = await context.Sink.WriteAsync(context.IntegrationId, facts, cancellationToken);
+        written += await FlushIfFullAsync(context, facts, force: true, cancellationToken);
         if (maxCommitted is not null && maxCommitted != lastCursor)
         {
             context.Cursor.Set(cursorKey, maxCommitted.Value.ToUniversalTime().ToString("o"));

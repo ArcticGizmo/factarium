@@ -145,6 +145,62 @@ public class GitHubPullSourceTests
         Assert.DoesNotContain(sink.Facts, f => f.EntityType == "review");
     }
 
+    [Fact]
+    public async Task Commits_are_written_in_batches_not_one_block()
+    {
+        const int total = 250; // > BatchSize (100), so it must span multiple flushes
+
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path == "/repos/acme/repo1")
+            {
+                return StubHttpMessageHandler.Json(
+                    """{ "id": 1, "full_name": "acme/repo1", "name": "repo1", "owner": { "login": "acme", "id": 42 } }""");
+            }
+
+            if (path == "/repos/acme/repo1/commits")
+            {
+                return StubHttpMessageHandler.Json(BuildCommits(total));
+            }
+
+            return StubHttpMessageHandler.NotFound();
+        });
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") };
+        var client = new GitHubApiClient(http, TimeProvider.System, NullLogger<GitHubApiClient>.Instance);
+        var source = new GitHubPullSource(client, NullLogger<GitHubPullSource>.Instance);
+        var sink = new RecordingRawRecordSink();
+        var cursor = new InMemoryCursorStore();
+        var context = new SyncContext
+        {
+            IntegrationId = Guid.NewGuid(),
+            IntegrationName = "test",
+            Credential = "token",
+            Config = new GitHubSourceConfig(Org: null, Repos: ["acme/repo1"]),
+            Cursor = cursor,
+            Sink = sink,
+            Reader = sink,
+        };
+
+        await source.PullEntityAsync("repository", context, CancellationToken.None);
+        var writesBeforeCommits = sink.WriteBatchSizes.Count;
+        await source.PullEntityAsync("commit", context, CancellationToken.None);
+
+        // Every commit lands, but across several bounded flushes rather than one block.
+        var commitFlushes = sink.WriteBatchSizes.Skip(writesBeforeCommits).ToList();
+        Assert.Equal(total, sink.Facts.Count(f => f.EntityType == "commit"));
+        Assert.True(commitFlushes.Count >= 3, $"expected multiple flushes, got {commitFlushes.Count}");
+        Assert.All(commitFlushes, size => Assert.True(size <= 100));
+    }
+
+    // A commits page of n entries with unique shas and ascending committer dates.
+    private static string BuildCommits(int n)
+    {
+        var items = Enumerable.Range(0, n).Select(i =>
+            $$"""{ "sha": "c{{i}}", "parents": [], "commit": { "message": "m{{i}}", "committer": { "date": "2026-07-05T00:00:{{(i % 60):D2}}Z", "name": "Octo", "email": "o@e.com" } } }""");
+        return $"[{string.Join(",", items)}]";
+    }
+
     private static (GitHubPullSource Source, RecordingRawRecordSink Sink, InMemoryCursorStore Cursor) Build(
         out StubHttpMessageHandler handler)
     {

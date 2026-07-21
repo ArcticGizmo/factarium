@@ -14,8 +14,12 @@ internal sealed class RecordingRawRecordSink : IRawRecordSink, IRawRecordReader
 {
     public List<RawFact> Facts { get; } = [];
 
+    // The size of each WriteAsync call, so tests can assert incremental (batched) flushing.
+    public List<int> WriteBatchSizes { get; } = [];
+
     public Task<int> WriteAsync(Guid integrationId, IReadOnlyCollection<RawFact> facts, CancellationToken cancellationToken)
     {
+        WriteBatchSizes.Add(facts.Count);
         Facts.AddRange(facts);
         return Task.FromResult(facts.Count);
     }
