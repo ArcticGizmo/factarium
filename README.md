@@ -1,11 +1,15 @@
+<h1 align="center">Factarium</h1>
 <p align="center">
   <img src="docs/factarium.png" alt="Factarium" width="128" height="128" />
 </p>
 
-# Factarium
+<p align="center">
+<strong>Quick, transparent, dev-centric metrics.</strong>
+</p>
 
-Quick, transparent, dev-centric metrics: **sync → transform → aggregate → render**,
-on a single Postgres. See [`docs/objective.md`](docs/objective.md) for the vision and
+# Factarium
+**Sync → transform → aggregate → render**, on a single Postgres. 
+See [`docs/objective.md`](docs/objective.md) for the vision and
 [`docs/implementation-plan.md`](docs/implementation-plan.md) for the phased roadmap.
 
 > Status: **Phase 7 — Claude Code OTEL (push) ingestion.** Adds a push source: an
