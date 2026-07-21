@@ -53,6 +53,6 @@ internal sealed class TempoIntegrationConfiguration : IEntityTypeConfiguration<T
 {
     public void Configure(EntityTypeBuilder<TempoIntegration> builder)
     {
-        builder.Property(x => x.ProjectKey).HasMaxLength(64);
+        builder.Property(x => x.ProjectId).HasMaxLength(64);
     }
 }

@@ -14,13 +14,20 @@
         <div v-if="error" class="text-error text-body-2 mb-3">{{ error }}</div>
 
         <v-text-field
-          v-model="form.projectKey"
-          label="Project key"
-          placeholder="QAI"
+          v-model="form.projectId"
+          label="Project ID"
+          placeholder="10023"
           density="comfortable"
           persistent-hint
-          hint="The Jira project whose worklogs are synced (one project per connection)"
+          hint="The numeric Jira project id whose worklogs are synced (one project per connection)"
         />
+
+        <div class="d-flex align-center text-caption text-medium-emphasis">
+          <span>Only have the project key?</span>
+          <v-btn variant="text" size="small" color="primary" class="px-1 text-none" @click="helperOpen = true">
+            Convert project key to id here
+          </v-btn>
+        </div>
 
         <div class="mt-4 mb-1 text-body-2">Sync since</div>
         <VueDatePicker
@@ -68,6 +75,53 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <!-- Helper: turn a Jira project key into the numeric id Tempo needs, via the project REST endpoint. -->
+  <v-dialog v-model="helperOpen" max-width="520">
+    <v-card>
+      <v-card-title class="pt-4">Convert project key to id</v-card-title>
+      <v-card-text>
+        <div class="text-body-2 text-medium-emphasis mb-4">
+          Tempo scopes worklogs by numeric project <em>id</em>, not the project key. Enter your Atlassian
+          site subdomain and the project key to build a link to Jira's project API — open it and copy the
+          <code>"id"</code> value from the JSON (a number like <code>10023</code>).
+        </div>
+
+        <v-text-field
+          v-model="helper.subdomain"
+          label="Atlassian subdomain"
+          placeholder="acme"
+          density="comfortable"
+          persistent-hint
+          hint="The part before .atlassian.net"
+        />
+
+        <v-text-field
+          v-model="helper.key"
+          label="Project key"
+          placeholder="SFTY"
+          density="comfortable"
+          class="mt-3"
+        />
+
+        <div v-if="helperUrl" class="mt-4">
+          <div class="text-caption text-medium-emphasis mb-1">Open this, then copy the "id" value:</div>
+          <a
+            :href="helperUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-primary text-body-2"
+            style="word-break: break-all;"
+          >{{ helperUrl }}</a>
+        </div>
+      </v-card-text>
+
+      <v-card-actions class="px-4 pb-4">
+        <v-spacer />
+        <v-btn variant="text" @click="helperOpen = false">Close</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup lang="ts">
@@ -92,11 +146,22 @@ const error = ref<string | null>(null);
 const today = new Date();
 
 const form = reactive({
-  projectKey: '',
+  projectId: '',
   syncSince: null as Date | null,
   cron: '',
   enabled: false,
   credential: ''
+});
+
+// Key-to-id helper modal: builds a link to Jira's project REST endpoint, whose JSON carries the id.
+const helperOpen = ref(false);
+const helper = reactive({ subdomain: '', key: '' });
+const helperUrl = computed(() => {
+  // Tolerate someone pasting the full host — keep just the subdomain label.
+  const sub = helper.subdomain.trim().replace(/^https?:\/\//, '').replace(/\.atlassian\.net.*$/i, '');
+  const key = helper.key.trim();
+  if (!sub || !key) return '';
+  return `https://${sub}.atlassian.net/rest/api/3/project/${encodeURIComponent(key)}`;
 });
 
 const credentialHint = computed(() =>
@@ -105,7 +170,7 @@ const credentialHint = computed(() =>
     : 'Create in Tempo → Settings → Data Access → API Integration. Stored encrypted.'
 );
 
-const canSave = computed(() => form.projectKey.trim().length > 0);
+const canSave = computed(() => form.projectId.trim().length > 0);
 
 // Reset the form each time the dialog opens (prefilled in edit mode).
 watch(
@@ -115,12 +180,12 @@ watch(
     error.value = null;
     if (props.integration) {
       const config = props.integration.config as TempoConfig | null;
-      form.projectKey = config?.projectKey ?? '';
+      form.projectId = config?.projectId ?? '';
       form.syncSince = config?.syncSince ? new Date(config.syncSince) : null;
       form.cron = props.integration.scheduleCron ?? '';
       form.enabled = props.integration.enabled;
     } else {
-      form.projectKey = '';
+      form.projectId = '';
       form.syncSince = null;
       form.cron = '';
       form.enabled = false;
@@ -143,12 +208,12 @@ function startOfDay(d: Date): string {
 async function save() {
   busy.value = true;
   error.value = null;
-  const projectKey = form.projectKey.trim();
+  const projectId = form.projectId.trim();
   const body = {
-    name: `Tempo · ${projectKey}`,
+    name: `Tempo · ${projectId}`,
     cron: form.cron || null,
     enabled: form.enabled,
-    projectKey,
+    projectId,
     syncSince: form.syncSince ? startOfDay(form.syncSince) : null,
     credential: form.credential || null
   };

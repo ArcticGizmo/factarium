@@ -47,7 +47,7 @@ public sealed class TempoPullSource(TempoApiClient client, ILogger<TempoPullSour
         var written = 0;
         DateTimeOffset? maxUpdated = null;
 
-        await foreach (var worklog in client.GetWorklogsAsync(config.ProjectKey, from, context.Credential, cancellationToken))
+        await foreach (var worklog in client.GetWorklogsAsync(config.ProjectId, from, context.Credential, cancellationToken))
         {
             var id = Id(worklog);
             if (id is null)
@@ -69,7 +69,7 @@ public sealed class TempoPullSource(TempoApiClient client, ILogger<TempoPullSour
         }
 
         written += await FlushAsync(context, batch, maxUpdated, cancellationToken);
-        logger.LogInformation("Tempo worklog sync wrote {Count} for project {Project}", written, config.ProjectKey);
+        logger.LogInformation("Tempo worklog sync wrote {Count} for project {ProjectId}", written, config.ProjectId);
         return SyncResult.Ok(written);
     }
 

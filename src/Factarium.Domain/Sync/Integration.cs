@@ -97,8 +97,11 @@ public sealed class TempoIntegration : Integration
 {
     public const string TypeName = "tempo";
 
-    /// <summary>The Jira project key whose worklogs are synced, e.g. "QAI".</summary>
-    public string? ProjectKey { get; set; }
+    /// <summary>
+    /// The numeric Jira project id whose worklogs are synced, e.g. "10023". Tempo's v4 API scopes
+    /// worklogs by numeric project id, not by the project key.
+    /// </summary>
+    public string? ProjectId { get; set; }
 
     /// <summary>Historical floor for the first sync: worklogs before this date are not pulled.</summary>
     public DateTimeOffset? SyncSince { get; set; }

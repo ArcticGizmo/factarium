@@ -111,7 +111,7 @@ function config(i: Integration): TempoConfig | null {
 }
 
 function projectLabel(i: Integration): string {
-  return config(i)?.projectKey ?? i.name;
+  return config(i)?.projectId ?? i.name;
 }
 
 function syncSinceLabel(i: Integration): string {

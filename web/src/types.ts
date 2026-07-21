@@ -157,7 +157,8 @@ export interface JiraConfig {
 }
 
 export interface TempoConfig {
-  projectKey: string | null;
+  // Numeric Jira project id (Tempo v4 scopes worklogs by id, not key).
+  projectId: string | null;
   // ISO date; the historical floor for the first worklog sync.
   syncSince: string | null;
 }

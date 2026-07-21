@@ -42,7 +42,7 @@ public sealed record CreateTempoIntegrationRequest(
     string Name,
     string? Cron,
     bool Enabled,
-    string? ProjectKey,
+    string? ProjectId,
     DateTimeOffset? SyncSince,
     string? Credential);
 
@@ -50,7 +50,7 @@ public sealed record UpdateTempoIntegrationRequest(
     string Name,
     string? Cron,
     bool Enabled,
-    string? ProjectKey,
+    string? ProjectId,
     DateTimeOffset? SyncSince,
     string? Credential);
 
@@ -298,7 +298,7 @@ public static class IntegrationEndpoints
                     Name = request.Name,
                     Enabled = request.Enabled,
                     ScheduleCron = request.Cron,
-                    ProjectKey = Blank(request.ProjectKey),
+                    ProjectId = Blank(request.ProjectId),
                     SyncSince = request.SyncSince,
                 },
                 request.Credential, db, protector, scheduler, clock, ct));
@@ -330,7 +330,7 @@ public static class IntegrationEndpoints
             tempo.Name = request.Name;
             tempo.Enabled = request.Enabled;
             tempo.ScheduleCron = Blank(request.Cron);
-            tempo.ProjectKey = Blank(request.ProjectKey);
+            tempo.ProjectId = Blank(request.ProjectId);
             tempo.SyncSince = request.SyncSince;
             if (!string.IsNullOrWhiteSpace(request.Credential))
             {
@@ -621,7 +621,7 @@ public static class IntegrationEndpoints
     {
         GitHubIntegration gh => new { gh.Org, gh.Repos },
         JiraIntegration jira => new { jira.BaseUrl, jira.Email, jira.ProjectKey, jira.SyncSince, jira.ScopedToken },
-        TempoIntegration tempo => new { tempo.ProjectKey, tempo.SyncSince },
+        TempoIntegration tempo => new { tempo.ProjectId, tempo.SyncSince },
         _ => null,
     };
 
