@@ -86,14 +86,32 @@ public static class IntegrationEndpoints
         {
             var integrations = await db.Integrations.OrderBy(i => i.Name).ToListAsync(ct);
 
-            // Newest source timestamp per (integration, entity), so the UI can flag stale data.
+            // Per (integration, entity): newest source timestamp (how new the data is), latest
+            // fetch time (when we last pulled), and how many records we hold — enough for the UI
+            // to show a freshness matrix.
             var freshness = await db.RawRecords
                 .GroupBy(r => new { r.IntegrationId, r.EntityType })
-                .Select(g => new { g.Key.IntegrationId, g.Key.EntityType, Latest = g.Max(r => r.SourceUpdatedAt) })
+                .Select(g => new
+                {
+                    g.Key.IntegrationId,
+                    g.Key.EntityType,
+                    Latest = g.Max(r => r.SourceUpdatedAt),
+                    LastFetched = g.Max(r => r.FetchedAt),
+                    Count = g.Count(),
+                })
                 .ToListAsync(ct);
-            var latestByIntegration = freshness
+            var freshnessByIntegration = freshness
                 .GroupBy(f => f.IntegrationId)
-                .ToDictionary(g => g.Key, g => g.ToDictionary(x => x.EntityType, x => x.Latest));
+                .ToDictionary(g => g.Key, g => g.ToDictionary(x => x.EntityType));
+
+            // (integration, entity) pairs with a sync currently in flight, so the UI can show a
+            // live "syncing…" state per entity.
+            var running = (await db.SyncRuns
+                    .Where(r => r.Status == SyncRunStatus.Running && r.EntityType != null)
+                    .Select(r => new { r.IntegrationId, r.EntityType })
+                    .ToListAsync(ct))
+                .Select(r => (r.IntegrationId, r.EntityType!))
+                .ToHashSet();
 
             var result = new List<object>(integrations.Count);
             foreach (var i in integrations)
@@ -103,7 +121,21 @@ public static class IntegrationEndpoints
                     .FirstOrDefault(s => string.Equals(s.Type, i.Type, StringComparison.OrdinalIgnoreCase))
                     ?.Entities ?? [];
 
-                var entityLatest = latestByIntegration.GetValueOrDefault(i.Id) ?? [];
+                var rows = freshnessByIntegration.GetValueOrDefault(i.Id) ?? [];
+                var entityLatest = rows.ToDictionary(kv => kv.Key, kv => kv.Value.Latest);
+
+                // Richer per-entity freshness for every entity this integration knows about
+                // (union of its declared entities and any already-stored types), so entities
+                // not yet synced still show up as "never".
+                var entityFreshness = entities.Concat(rows.Keys).Distinct().ToDictionary(
+                    e => e,
+                    e => (object)new
+                    {
+                        latest = rows.TryGetValue(e, out var row) ? row.Latest : null,
+                        lastFetched = rows.TryGetValue(e, out var lf) ? lf.LastFetched : (DateTimeOffset?)null,
+                        count = rows.TryGetValue(e, out var c) ? c.Count : 0,
+                        running = running.Contains((i.Id, e)),
+                    });
 
                 result.Add(new
                 {
@@ -121,6 +153,7 @@ public static class IntegrationEndpoints
                     HasCredential = i.EncryptedCredential is not null,
                     Entities = entities,
                     EntityLatest = entityLatest,
+                    EntityFreshness = entityFreshness,
                     Config = ConfigFor(i),
                 });
             }

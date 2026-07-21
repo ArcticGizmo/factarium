@@ -133,7 +133,17 @@ export interface Integration {
   entities: string[];
   // Newest record source-timestamp per entity type, for spotting stale data (null = none yet).
   entityLatest: Record<string, string | null>;
+  // Richer freshness per entity type: newest data held, when last pulled, record count, and
+  // whether a sync is currently running for it.
+  entityFreshness: Record<string, EntityFreshness>;
   config: GitHubConfig | JiraConfig | TempoConfig | null;
+}
+
+export interface EntityFreshness {
+  latest: string | null;
+  lastFetched: string | null;
+  count: number;
+  running: boolean;
 }
 
 // --- /api/integrations/{id}/records ---
