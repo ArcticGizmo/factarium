@@ -289,28 +289,26 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
         return SyncResult.Ok(written);
     }
 
-    // Writes the accumulated batch (if any) and advances the entity's cursor to the watermark,
-    // then clears the batch. Returns the number written.
+    // Writes the accumulated batch (if any), advances the entity's cursor to the watermark, then
+    // checkpoints that progress so an interrupted run resumes here (issues are pulled oldest-first,
+    // so the cursor safely means "done up to this point"). Returns the number written.
     private static async Task<int> FlushAsync(
         SyncContext context, List<RawFact> batch, string cursorKey, DateTimeOffset? mark, CancellationToken cancellationToken)
     {
-        if (batch.Count == 0)
+        var written = 0;
+        if (batch.Count > 0)
         {
-            if (mark is not null)
-            {
-                context.Cursor.Set(cursorKey, mark.Value.ToUniversalTime().ToString("o"));
-            }
-
-            return 0;
+            written = await context.Sink.WriteAsync(context.IntegrationId, batch, cancellationToken);
+            batch.Clear();
         }
 
-        var written = await context.Sink.WriteAsync(context.IntegrationId, batch, cancellationToken);
         if (mark is not null)
         {
             context.Cursor.Set(cursorKey, mark.Value.ToUniversalTime().ToString("o"));
         }
 
-        batch.Clear();
+        // Persist records first, then the cursor: an interrupt re-fetches at worst, never skips.
+        await context.CheckpointAsync(cancellationToken);
         return written;
     }
 

@@ -18,6 +18,9 @@ internal sealed class DictionaryCursorStore : ICursorStore
 
     public bool Dirty { get; private set; }
 
+    /// <summary>Marks the current state as persisted, so the next save only fires on new changes.</summary>
+    public void ClearDirty() => Dirty = false;
+
     public string? Get(string key) => _values.TryGetValue(key, out var value) ? value : null;
 
     public void Set(string key, string? value)

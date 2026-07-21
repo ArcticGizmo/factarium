@@ -26,6 +26,19 @@ public sealed class SyncContext
 
     /// <summary>Reads back bronze records so a dependent entity can source its work-set.</summary>
     public required IRawRecordReader Reader { get; init; }
+
+    /// <summary>
+    /// Persists cursor progress partway through an entity so an interrupted run resumes from the
+    /// last checkpoint instead of re-fetching the whole entity. Sources call
+    /// <see cref="CheckpointAsync"/> right after a flush — once records are safely written and the
+    /// cursor advanced. Only safe for oldest-first feeds (the cursor then means "done up to here").
+    /// Null means no-op (e.g. tests, or the end-of-entity save handles it).
+    /// </summary>
+    public Func<CancellationToken, Task>? Checkpoint { get; init; }
+
+    /// <summary>Persists cursor progress if a checkpoint hook is wired; otherwise a no-op.</summary>
+    public Task CheckpointAsync(CancellationToken cancellationToken) =>
+        Checkpoint?.Invoke(cancellationToken) ?? Task.CompletedTask;
 }
 
 /// <summary>

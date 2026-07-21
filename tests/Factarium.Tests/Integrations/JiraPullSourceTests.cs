@@ -257,6 +257,48 @@ public class JiraPullSourceTests
         };
     }
 
+    [Fact]
+    public async Task Checkpoints_cursor_progress_after_flushing_issues()
+    {
+        string? searchBody = null;
+        var handler = new StubHttpMessageHandler(request => Respond(request, ref searchBody));
+        var http = new HttpClient(handler);
+        var client = new JiraApiClient(http, TimeProvider.System, NullLogger<JiraApiClient>.Instance);
+        var source = new JiraPullSource(client, NullLogger<JiraPullSource>.Instance);
+
+        var sink = new RecordingRawRecordSink();
+        var cursor = new InMemoryCursorStore();
+        // Snapshot the persisted issue cursor at each checkpoint the source triggers.
+        var checkpointedCursors = new List<string?>();
+        var context = new SyncContext
+        {
+            IntegrationId = Guid.NewGuid(),
+            IntegrationName = "jira",
+            Credential = "api-token",
+            Config = new JiraSourceConfig(
+                BaseUrl: "https://acme.atlassian.net",
+                Email: "dev@example.com",
+                ProjectKey: "QAI",
+                SyncSince: DateTimeOffset.Parse("2026-07-01T00:00:00Z"),
+                ScopedToken: false),
+            Cursor = cursor,
+            Sink = sink,
+            Reader = sink,
+            Checkpoint = _ =>
+            {
+                checkpointedCursors.Add(cursor.Get("issues:updated"));
+                return Task.CompletedTask;
+            },
+        };
+
+        await source.PullEntityAsync("issue", context, CancellationToken.None);
+
+        // The flush checkpointed, and by then the issue cursor had already advanced — so an
+        // interrupted run would resume from here rather than re-fetching the whole project.
+        Assert.NotEmpty(checkpointedCursors);
+        Assert.Contains(checkpointedCursors, c => c is not null);
+    }
+
     private static HttpResponseMessage Respond(HttpRequestMessage request, ref string? searchBody)
     {
         var path = request.RequestUri!.AbsolutePath;

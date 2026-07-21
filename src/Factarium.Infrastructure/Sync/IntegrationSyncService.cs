@@ -69,6 +69,20 @@ internal sealed class IntegrationSyncService(
             ? null
             : protector.Unprotect(integration.EncryptedCredential);
 
+        // Persists cursor progress mid-entity (after a source flushes a batch), so an
+        // interrupted run resumes from the last checkpoint rather than re-fetching the entity.
+        async Task CheckpointCursorAsync(CancellationToken ct)
+        {
+            if (!cursor.Dirty)
+            {
+                return;
+            }
+
+            integration.CursorState = JsonSerializer.Serialize(cursor.Snapshot());
+            await db.SaveChangesAsync(ct);
+            cursor.ClearDirty();
+        }
+
         var context = new SyncContext
         {
             IntegrationId = integration.Id,
@@ -78,6 +92,7 @@ internal sealed class IntegrationSyncService(
             Cursor = cursor,
             Sink = sink,
             Reader = reader,
+            Checkpoint = CheckpointCursorAsync,
         };
 
         logger.LogInformation(

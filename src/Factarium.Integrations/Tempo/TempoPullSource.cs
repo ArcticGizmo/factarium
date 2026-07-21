@@ -88,6 +88,8 @@ public sealed class TempoPullSource(TempoApiClient client, ILogger<TempoPullSour
         }
 
         batch.Clear();
+        // Persist records first, then the cursor, so an interrupted run resumes here.
+        await context.CheckpointAsync(cancellationToken);
         return written;
     }
 
