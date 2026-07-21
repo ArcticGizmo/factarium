@@ -1,0 +1,13 @@
+{
+  "name": "factarium-icon-tools",
+  "private": true,
+  "type": "module",
+  "description": "Generate the favicon and README assets from factarium.svg. Renders every raster size directly from the source vector for maximum sharpness.",
+  "scripts": {
+    "generate": "node generate-icons.mjs"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "png-to-ico": "^2.1.8"
+  }
+}

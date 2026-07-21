@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/factarium.png" alt="Factarium" width="128" height="128" />
+</p>
+
 # Factarium
 
 Quick, transparent, dev-centric metrics: **sync → transform → aggregate → render**,
