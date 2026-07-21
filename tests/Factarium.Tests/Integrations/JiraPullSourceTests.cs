@@ -43,6 +43,25 @@ public class JiraPullSourceTests
         Assert.Equal(2, sink.Facts.Count(f => f.EntityType == "issue"));
         Assert.Contains(sink.Facts, f => f is { EntityType: "issue", SourceId: "1001" });
         Assert.Equal(2, sink.Facts.Count(f => f.EntityType == "issue_changelog"));
+
+        // The changelog is stored as a compact projection: only tracked-field changes survive
+        // (the status change is kept; worklog noise is dropped), the entry keeps just the author
+        // account (no email/avatar blob), and empty-of-signal entries are omitted entirely.
+        var changelog1001 = sink.Facts.Single(f => f is { EntityType: "issue_changelog", SourceId: "1001" });
+        using var changelogDoc = JsonDocument.Parse(changelog1001.Payload);
+        var changelogRoot = changelogDoc.RootElement;
+        Assert.False(changelogRoot.TryGetProperty("histories", out _));
+        var changelogEntries = changelogRoot.GetProperty("entries");
+        Assert.Equal(1, changelogEntries.GetArrayLength());
+        var entry = changelogEntries[0];
+        Assert.Equal("acc-1", entry.GetProperty("author_id").GetString());
+        Assert.Equal("Ada L", entry.GetProperty("author_name").GetString());
+        Assert.False(entry.TryGetProperty("emailAddress", out _));
+        var changes = entry.GetProperty("changes");
+        Assert.Equal(1, changes.GetArrayLength());
+        Assert.Equal("status", changes[0].GetProperty("field").GetString());
+        Assert.Equal("In Progress", changes[0].GetProperty("to_str").GetString());
+
         Assert.Contains(sink.Facts, f => f is { EntityType: "sprint", SourceId: "5" });
         // Future sprints (state "future", here QAI-2's Sprint 6) are not replicated.
         Assert.DoesNotContain(sink.Facts, f => f is { EntityType: "sprint", SourceId: "6" });
@@ -295,14 +314,21 @@ public class JiraPullSourceTests
 
             case "/rest/api/3/issue/1001/changelog":
             case "/rest/api/3/issue/1002/changelog":
+                // The status change is tracked; the worklog entry (and the worklog item mixed
+                // into the status entry) is noise the projection must drop.
                 return StubHttpMessageHandler.Json(
                     """
                     {
                       "isLast": true,
                       "values": [
                         { "created": "2026-07-08T10:00:00.000+0000",
+                          "author": { "accountId": "acc-1", "displayName": "Ada L", "emailAddress": "ada@example.com" },
+                          "items": [
+                            { "field": "status", "fieldId": "status", "fromString": "To Do", "toString": "In Progress" },
+                            { "field": "timespent", "fieldId": "timespent", "from": null, "to": "3600" } ] },
+                        { "created": "2026-07-08T11:00:00.000+0000",
                           "author": { "accountId": "acc-1" },
-                          "items": [ { "field": "status", "fromString": "To Do", "toString": "In Progress" } ] }
+                          "items": [ { "field": "WorklogId", "from": null, "to": "90210" } ] }
                       ]
                     }
                     """);

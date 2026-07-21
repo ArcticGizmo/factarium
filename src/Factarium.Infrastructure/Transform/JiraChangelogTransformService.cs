@@ -159,41 +159,42 @@ internal sealed class JiraChangelogTransformService(FactariumDbContext db, TimeP
             IsOpen = endedAt is null,
         };
 
+    // Reads the compact changelog projection written by JiraPullSource:
+    // { entries: [ { at, author_id, author_name, changes: [ { field, field_id, from, from_str, to, to_str } ] } ] }.
     private static List<ChangelogEntry> ParseEntries(JsonElement root)
     {
         var entries = new List<ChangelogEntry>();
-        if (!root.TryGetProperty("histories", out var histories) || histories.ValueKind != JsonValueKind.Array)
+        if (!root.TryGetProperty("entries", out var entryArray) || entryArray.ValueKind != JsonValueKind.Array)
         {
             return entries;
         }
 
-        foreach (var history in histories.EnumerateArray())
+        foreach (var entry in entryArray.EnumerateArray())
         {
-            var created = Date(history, "created");
+            var created = Date(entry, "at");
             if (created is null)
             {
                 continue;
             }
 
-            var author = history.TryGetProperty("author", out var a) && a.ValueKind == JsonValueKind.Object ? a : default;
             var items = new List<ChangelogItem>();
-            if (history.TryGetProperty("items", out var itemArray) && itemArray.ValueKind == JsonValueKind.Array)
+            if (entry.TryGetProperty("changes", out var changeArray) && changeArray.ValueKind == JsonValueKind.Array)
             {
-                foreach (var item in itemArray.EnumerateArray())
+                foreach (var change in changeArray.EnumerateArray())
                 {
-                    var field = Str(item, "field");
+                    var field = Str(change, "field");
                     if (field is null)
                     {
                         continue;
                     }
 
                     items.Add(new ChangelogItem(
-                        field, Str(item, "fieldId"), Str(item, "from"), Str(item, "fromString"),
-                        Str(item, "to"), Str(item, "toString")));
+                        field, Str(change, "field_id"), Str(change, "from"), Str(change, "from_str"),
+                        Str(change, "to"), Str(change, "to_str")));
                 }
             }
 
-            entries.Add(new ChangelogEntry(created.Value, Str(author, "accountId"), Str(author, "displayName"), items));
+            entries.Add(new ChangelogEntry(created.Value, Str(entry, "author_id"), Str(entry, "author_name"), items));
         }
 
         return entries;

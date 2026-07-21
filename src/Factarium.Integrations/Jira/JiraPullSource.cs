@@ -11,8 +11,9 @@ namespace Factarium.Integrations.Jira;
 /// with a historical <c>SyncSince</c> floor, it runs four independent entities:
 /// <c>issue</c> (rich fields incl. story points + sprint, fetched from the API), and three
 /// derived from the replicated issues — <c>sprint</c> (from the issues' Sprint field, so no
-/// Jira Software/Agile scope is needed), <c>issue_changelog</c> (full history for
-/// time-in-status and scope changes), and <c>issue_devlinks</c> (best-effort PR/branch
+/// Jira Software/Agile scope is needed), <c>issue_changelog</c> (history filtered to the
+/// flow/estimate fields we track — see <see cref="RelevantChangelogFields"/> — for
+/// time-in-status, scope, and re-estimation), and <c>issue_devlinks</c> (best-effort PR/branch
 /// links, classic tokens only). Each entity keeps its own updated-time cursor and commits
 /// independently, so a failure in one never discards another's records.
 /// </summary>
@@ -38,6 +39,18 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
     // fields are appended per-instance in BuildFields once their ids are discovered.
     private static readonly string[] BaseFields =
         ["summary", "status", "issuetype", "assignee", "reporter", "created", "updated", "resolutiondate", "project", "comment"];
+
+    // The only changed-fields worth replicating from an issue's history: status/assignee drive
+    // time-in-stage-per-person, resolution flags reopens, Sprint tracks scope in/out, Flagged
+    // marks blocked spans, and story points capture re-estimation. Every other change Jira
+    // records — worklogs, ranking, attachments, links, descriptions, comments… — is dropped at
+    // fetch time so bronze stays a compact projection rather than a raw history dump. Matched by
+    // display name (the ids are custom-field ids that differ per instance); story points are
+    // named "Story Points" (company-managed) or "Story point estimate" (team-managed).
+    private static readonly HashSet<string> RelevantChangelogFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "status", "assignee", "resolution", "Sprint", "Flagged", "Story Points", "Story point estimate",
+    };
 
     public string Type => Source;
 
@@ -477,29 +490,86 @@ public sealed class JiraPullSource(JiraApiClient client, ILogger<JiraPullSource>
     private static string? Iso(JsonElement element, string property) =>
         ParseDateElement(element, property)?.ToString("o");
 
+    // Replicates an issue's changelog as a compact, flow-focused projection: only the history
+    // entries that changed a field in RelevantChangelogFields, each reduced to its timestamp, the
+    // author's account, and the relevant changes. The full author blob (avatar urls, email,
+    // timezone) and every unrelated field change are discarded.
     private async Task<RawFact> BuildChangelogFactAsync(
         string apiRoot, string issueId, string email, string token, CancellationToken cancellationToken)
     {
-        var histories = new List<JsonElement>();
+        var entries = new JsonArray();
         DateTimeOffset? latest = null;
 
-        await foreach (var entry in client.GetIssueChangelogAsync(apiRoot, issueId, email, token, cancellationToken))
+        await foreach (var history in client.GetIssueChangelogAsync(apiRoot, issueId, email, token, cancellationToken))
         {
-            histories.Add(entry);
-            var created = ParseDateElement(entry, "created");
+            var created = ParseDateElement(history, "created");
+            var compact = CompactChangelogEntry(history, created);
+            if (compact is null)
+            {
+                continue;
+            }
+
+            entries.Add(compact);
             if (created is not null && (latest is null || created > latest))
             {
                 latest = created;
             }
         }
 
-        var payload = JsonSerializer.Serialize(new Dictionary<string, object?>
+        var payload = new JsonObject
         {
             ["issueId"] = issueId,
-            ["histories"] = histories,
-        });
+            ["entries"] = entries,
+        }.ToJsonString();
 
         return new RawFact(Source, "issue_changelog", issueId, payload, latest);
+    }
+
+    // Projects one Jira history entry to { at, author_id, author_name, changes[] }, keeping only
+    // the changes to fields we track. Returns null when the entry has no timestamp or changed
+    // nothing relevant, so it is dropped from the stored changelog entirely.
+    private static JsonObject? CompactChangelogEntry(JsonElement history, DateTimeOffset? created)
+    {
+        if (created is null
+            || !history.TryGetProperty("items", out var items)
+            || items.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var changes = new JsonArray();
+        foreach (var item in items.EnumerateArray())
+        {
+            var field = Str(item, "field");
+            if (field is null || !RelevantChangelogFields.Contains(field))
+            {
+                continue;
+            }
+
+            changes.Add(new JsonObject
+            {
+                ["field"] = field,
+                ["field_id"] = Str(item, "fieldId"),
+                ["from"] = Str(item, "from"),
+                ["from_str"] = Str(item, "fromString"),
+                ["to"] = Str(item, "to"),
+                ["to_str"] = Str(item, "toString"),
+            });
+        }
+
+        if (changes.Count == 0)
+        {
+            return null;
+        }
+
+        var author = Obj(history, "author");
+        return new JsonObject
+        {
+            ["at"] = created.Value.ToString("o"),
+            ["author_id"] = Str(author, "accountId"),
+            ["author_name"] = Str(author, "displayName"),
+            ["changes"] = changes,
+        };
     }
 
     // Accumulates the distinct sprint objects from a flattened issue's root-level "sprints"
