@@ -1,5 +1,8 @@
 <template>
-  <BasePage title="Flow" subtitle="Where work time goes, per person — replayed from the Jira changelog">
+  <BasePage
+    title="Flow"
+    subtitle="Where work time goes, per person — replayed from the Jira changelog (unassigned/pre-pickup time excluded)"
+  >
     <template #actions>
       <v-btn size="small" variant="text" :loading="loading" @click="load">Refresh</v-btn>
     </template>
@@ -24,9 +27,9 @@
       <div class="chart-title">Time in status, per person (hours)</div>
       <v-chart class="chart" :style="{ height: flowHeight + 'px' }" :option="timeInStatusOption" autoresize />
 
-      <div v-if="data.blocked.length" class="chart-title mt-4">Blocked time, per person (hours)</div>
+      <div v-if="assignedBlocked.length" class="chart-title mt-4">Blocked time, per person (hours)</div>
       <v-chart
-        v-if="data.blocked.length"
+        v-if="assignedBlocked.length"
         class="chart"
         :style="{ height: blockedHeight + 'px' }"
         :option="blockedOption"
@@ -62,12 +65,20 @@ async function load() {
 
 onMounted(load);
 
-const empty = computed(() => data.value !== null && data.value.timeInStatus.length === 0);
+// "unassigned" is the absence of a person (mostly pre-pickup backlog time); it swamps the
+// per-person scale, so it's excluded from every per-person view on this page.
+const UNASSIGNED = 'unassigned';
+
+const empty = computed(() => data.value !== null && flow.value.categories.length === 0);
+
+const assignedBlocked = computed(() =>
+  (data.value?.blocked ?? []).filter((b) => b.assignee !== UNASSIGNED)
+);
 
 const tiles = computed(() => {
   const d = data.value;
   if (!d) return [];
-  const blockedHours = round(d.blocked.reduce((sum, b) => sum + b.hours, 0));
+  const blockedHours = round(assignedBlocked.value.reduce((sum, b) => sum + b.hours, 0));
   return [
     { label: 'Reopens', value: d.churn.reopens },
     { label: 'Reassignments', value: d.churn.reassignments },
@@ -85,11 +96,12 @@ const categoryRank = (c: string | null) =>
 
 const flow = computed<{ categories: string[]; rows: { label: string; values: number[] }[] }>(() => {
   const d = data.value;
-  if (!d || d.timeInStatus.length === 0) return { categories: [], rows: [] };
+  const items = d?.timeInStatus.filter((t) => t.assignee !== UNASSIGNED) ?? [];
+  if (!d || items.length === 0) return { categories: [], rows: [] };
 
   const rankOf = new Map<string, number>();
   const totalOf = new Map<string, number>();
-  for (const t of d.timeInStatus) {
+  for (const t of items) {
     rankOf.set(t.status, categoryRank(t.category));
     totalOf.set(t.status, (totalOf.get(t.status) ?? 0) + t.hours);
   }
@@ -112,7 +124,7 @@ const flow = computed<{ categories: string[]; rows: { label: string; values: num
 
   const index = new Map(categories.map((c, i) => [c, i]));
   const byAssignee = new Map<string, number[]>();
-  for (const t of d.timeInStatus) {
+  for (const t of items) {
     const key = folded.has(t.status) ? 'Other' : t.status;
     const i = index.get(key);
     if (i === undefined) continue;
@@ -132,12 +144,12 @@ const flow = computed<{ categories: string[]; rows: { label: string; values: num
 
 const timeInStatusOption = computed(() => stackedBarOption(flow.value.categories, flow.value.rows, 'h'));
 const blockedOption = computed(() =>
-  barOption((data.value?.blocked ?? []).map((b) => ({ label: b.assignee, value: round(b.hours) })))
+  barOption(assignedBlocked.value.map((b) => ({ label: b.assignee, value: round(b.hours) })))
 );
 
 // Give each person's row room; keep a sensible floor and cap.
 const flowHeight = computed(() => Math.min(720, Math.max(240, flow.value.rows.length * 44 + 60)));
-const blockedHeight = computed(() => Math.min(480, Math.max(160, (data.value?.blocked.length ?? 0) * 40 + 40)));
+const blockedHeight = computed(() => Math.min(480, Math.max(160, assignedBlocked.value.length * 40 + 40)));
 
 function round(n: number) {
   return Math.round(n * 10) / 10;
