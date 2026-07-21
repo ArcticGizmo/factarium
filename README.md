@@ -7,8 +7,9 @@
 <strong>Quick, transparent, dev-centric metrics.</strong>
 </p>
 
-# Factarium
-**Sync → transform → aggregate → render**, on a single Postgres. 
+<br>
+
+**Sync → transform → aggregate → render**, on a single Postgres.
 See [`docs/objective.md`](docs/objective.md) for the vision and
 [`docs/implementation-plan.md`](docs/implementation-plan.md) for the phased roadmap.
 

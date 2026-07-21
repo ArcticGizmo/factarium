@@ -91,8 +91,20 @@ const tiles = computed(() => {
 // stack reads left-to-right through the workflow. Cap at 8 chromatic slots; fold the rest
 // (by smallest total time) into a neutral "Other".
 const CATEGORY_CAP = 8;
-const categoryRank = (c: string | null) =>
-  c === 'To Do' ? 0 : c === 'In Progress' ? 1 : c === 'Done' ? 2 : 3;
+
+// Workflow rank for stack ordering (To Do -> In Progress -> Done). Prefer the explicit Jira
+// status category; fall back to keywords in the status name for statuses whose category never
+// came through (it's only known for statuses some issue currently sits in), so e.g. "In Review"
+// still lands mid-workflow instead of trailing at the end.
+function categoryRank(category: string | null, status: string): number {
+  if (category === 'To Do') return 0;
+  if (category === 'In Progress') return 1;
+  if (category === 'Done') return 2;
+  const s = status.toLowerCase();
+  if (/(done|closed|resolved|complete|released|shipped)/.test(s)) return 2;
+  if (/(backlog|to ?do|triage|\bnew\b|\bopen\b)/.test(s)) return 0;
+  return 1; // review, qa, testing, dev, blocked, … → mid-workflow
+}
 
 const flow = computed<{ categories: string[]; rows: { label: string; values: number[] }[] }>(() => {
   const d = data.value;
@@ -102,7 +114,7 @@ const flow = computed<{ categories: string[]; rows: { label: string; values: num
   const rankOf = new Map<string, number>();
   const totalOf = new Map<string, number>();
   for (const t of items) {
-    rankOf.set(t.status, categoryRank(t.category));
+    rankOf.set(t.status, categoryRank(t.category, t.status));
     totalOf.set(t.status, (totalOf.get(t.status) ?? 0) + t.hours);
   }
 
