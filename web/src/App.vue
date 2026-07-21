@@ -1,7 +1,8 @@
 <template>
   <v-app>
     <v-navigation-drawer permanent color="surface" width="240">
-      <div class="px-4 py-4">
+      <div class="px-4 py-4 d-flex align-center ga-2">
+        <img src="/favicon.svg" alt="" width="32" height="32" />
         <div class="text-h6">Factarium</div>
       </div>
       <v-divider />
