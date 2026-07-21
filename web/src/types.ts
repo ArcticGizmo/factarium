@@ -196,9 +196,20 @@ export interface EntityFreshness {
 }
 
 // --- /api/integrations/{id}/records ---
+// One month bucket of the 12-month histogram: "yyyy-MM" and the record count in it.
+export interface RecordMonthCount {
+  key: string;
+  count: number;
+}
+
 export interface RecordTypeCount {
   entityType: string;
   count: number;
+  // Span of source activity for this type (null when no record carries a source timestamp).
+  earliest: string | null;
+  latest: string | null;
+  // Record counts for the trailing 12 calendar months, oldest first (always 12 entries).
+  monthly: RecordMonthCount[];
 }
 
 export interface RepositorySummary {
@@ -220,6 +231,8 @@ export interface RecordsSummary {
   id: string;
   name: string;
   type: string;
+  // When the connection's last sync finished (integration-wide), shown in each tab summary.
+  lastRun: string | null;
   entityTypes: RecordTypeCount[];
   // Present for GitHub integrations; shown in the header instead of a tab.
   repository: RepositorySummary | null;

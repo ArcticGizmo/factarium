@@ -50,6 +50,30 @@
         </v-tab>
       </v-tabs>
 
+      <!-- Per-type summary: freshness span, last run, and a 12-month record histogram. -->
+      <v-sheet v-if="selectedTypeSummary" rounded border class="pa-3 mb-3">
+        <div class="d-flex flex-wrap align-center ga-6">
+          <div class="d-flex ga-6 flex-wrap">
+            <div>
+              <div class="text-caption text-medium-emphasis">Earliest</div>
+              <div class="text-body-2">{{ selectedTypeSummary.earliest ? fmt(selectedTypeSummary.earliest) : '—' }}</div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Latest</div>
+              <div class="text-body-2">{{ selectedTypeSummary.latest ? fmt(selectedTypeSummary.latest) : '—' }}</div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Last run</div>
+              <div class="text-body-2">{{ summary.lastRun ? fmt(summary.lastRun) : '—' }}</div>
+            </div>
+          </div>
+          <div class="month-wrap flex-grow-1">
+            <div class="text-caption text-medium-emphasis mb-1">Records / month (last 12)</div>
+            <v-chart v-if="monthlyOption" class="month-chart" :option="monthlyOption" autoresize />
+          </div>
+        </div>
+      </v-sheet>
+
       <!-- Filters -->
       <div class="d-flex align-center flex-wrap ga-3 mb-3">
         <VueDatePicker
@@ -364,6 +388,39 @@
           </tbody>
         </v-table>
 
+        <!-- Worklog-specific extracted columns (Tempo logged effort). -->
+        <v-table v-else-if="selectedType === 'worklog'" density="comfortable">
+          <thead>
+            <tr>
+              <th style="width: 130px">Work date</th>
+              <th style="width: 120px">Time spent</th>
+              <th style="width: 120px">Issue</th>
+              <th>Description</th>
+              <th style="width: 70px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="records.length === 0">
+              <td colspan="5" class="text-medium-emphasis text-caption py-4">No worklogs in this range.</td>
+            </tr>
+            <tr v-for="r in records" :key="r.id">
+              <td class="text-caption">{{ worklog(r).workDate ?? '—' }}</td>
+              <td><code>{{ worklog(r).timeSpent }}</code></td>
+              <td>
+                <code v-if="worklog(r).issueLabel">{{ worklog(r).issueLabel }}</code>
+                <span v-else class="text-medium-emphasis">—</span>
+              </td>
+              <td>
+                <span v-if="worklog(r).description">{{ worklog(r).description }}</span>
+                <span v-else class="text-medium-emphasis">—</span>
+              </td>
+              <td>
+                <v-btn size="x-small" variant="text" @click="openRaw(r)">Raw</v-btn>
+              </td>
+            </tr>
+          </tbody>
+        </v-table>
+
         <!-- Generic view for other entity types -->
         <v-table v-else density="comfortable">
           <thead>
@@ -446,8 +503,10 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { VueDatePicker } from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
+import VChart from 'vue-echarts';
 import BasePage from '../../components/BasePage.vue';
 import type { RecordsSummary, RawRecordView, RecordsPageResult } from '../../types';
+import { monthlyBarOption } from '../../charts';
 import { formatDateTime as fmt } from '../../utils/datetime';
 import { api } from '../../api';
 
@@ -472,8 +531,12 @@ const rawRecord = ref<RawRecordView | null>(null);
 
 const purgeOpen = ref(false);
 const purging = ref(false);
-const selectedTypeCount = computed(
-  () => summary.value?.entityTypes.find((t) => t.entityType === selectedType.value)?.count ?? 0
+const selectedTypeSummary = computed(
+  () => summary.value?.entityTypes.find((t) => t.entityType === selectedType.value) ?? null
+);
+const selectedTypeCount = computed(() => selectedTypeSummary.value?.count ?? 0);
+const monthlyOption = computed(() =>
+  selectedTypeSummary.value ? monthlyBarOption(selectedTypeSummary.value.monthly) : null
 );
 
 const title = computed(() => (summary.value ? `${summary.value.name} — records` : 'Records'));
@@ -804,6 +867,38 @@ function changelog(r: RawRecordView): ChangelogRow {
   };
 }
 
+// --- worklog column extraction (Tempo) ---
+// Payload shape from TempoPullSource.FlattenWorklog: work_date, time_spent_seconds,
+// description, issue_key, etc.
+interface WorklogRow {
+  workDate: string | null;
+  timeSpent: string;
+  // Tempo v4 worklogs only carry the numeric issue id (the key was dropped), so we show the
+  // key when present and fall back to "#<id>".
+  issueLabel: string | null;
+  description: string;
+}
+
+// Seconds → HH:MM:SS, zero-padded (hours grow past two digits for very long logs).
+function formatDuration(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
+}
+
+function worklog(r: RawRecordView): WorklogRow {
+  const p = (r.payload ?? {}) as Record<string, any>;
+  return {
+    // work_date is a date-only string (Tempo's startDate); keep it as-is to avoid tz drift.
+    workDate: typeof p.work_date === 'string' ? p.work_date.slice(0, 10) : null,
+    timeSpent: formatDuration(Number(p.time_spent_seconds ?? 0)),
+    // Tempo v4 stopped returning issue_key on worklogs; issue_id is what's there. Prefer the
+    // key if a future/other source populated it, else show the numeric id as "#<id>".
+    issueLabel: p.issue_key ?? (p.issue_id != null ? `#${p.issue_id}` : null),
+    description: String(p.description ?? '')
+  };
+}
+
 function pretty(payload: unknown) {
   return JSON.stringify(payload, null, 2);
 }
@@ -831,6 +926,16 @@ onMounted(loadSummary);
   line-height: 1.5;
   padding-top: 6px;
   padding-bottom: 6px;
+}
+
+/* 12-month histogram: short, and fills its container width. Bars scale to 100% of this
+   height, so the block stays compact regardless of record volume. */
+.month-wrap {
+  min-width: 280px;
+}
+.month-chart {
+  width: 100%;
+  height: 88px;
 }
 
 /* vue-datepicker: sized and rounded to sit alongside the compact Vuetify fields. */

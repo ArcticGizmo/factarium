@@ -2,7 +2,7 @@
 // reference palette (dark steps — the app runs a dark Vuetify theme). Categorical
 // slots are assigned in fixed order: slot 1 blue, slot 2 green.
 import type { EChartsOption } from 'echarts';
-import type { DayPoint, LabelValue } from './types';
+import type { DayPoint, LabelValue, RecordMonthCount } from './types';
 
 export interface Series {
   name: string;
@@ -120,6 +120,60 @@ export function stackedBarOption(
       itemStyle: { borderColor: palette.surface, borderWidth: 2 },
       emphasis: { focus: 'series' }
     }))
+  } as EChartsOption;
+}
+
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// A "yyyy-MM" key → "Aug" (axis) / "Aug 2025" (tooltip).
+function monthShort(key: string): string {
+  const m = Number(key.split('-')[1]) - 1;
+  return MONTH_ABBR[m] ?? key;
+}
+function monthLong(key: string): string {
+  const [y, m] = key.split('-');
+  return `${MONTH_ABBR[Number(m) - 1] ?? m} ${y}`;
+}
+
+// Compact trailing-12-month record histogram. A single magnitude series, so no legend — the
+// caller's heading names it. `tooltip.trigger: 'axis'` with a shadow pointer makes the whole
+// month column the hover target, so the tooltip still appears for a month whose bar is a
+// sliver (or zero) — hovering doesn't depend on hitting the bar rect. Bars scale to the
+// tallest month and fill the container height, so the chart reads at whatever height it's given.
+export function monthlyBarOption(months: RecordMonthCount[]): EChartsOption {
+  return {
+    color: palette.series,
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      backgroundColor: palette.surface,
+      borderColor: palette.grid,
+      textStyle: { color: palette.text },
+      formatter: (params: unknown) => {
+        const p = (Array.isArray(params) ? params[0] : params) as { dataIndex: number; value: number };
+        const n = p?.value ?? 0;
+        return `${monthLong(months[p.dataIndex].key)}<br/><strong>${n}</strong> record${n === 1 ? '' : 's'}`;
+      }
+    },
+    grid: { left: 4, right: 4, top: 6, bottom: 4, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: months.map((m) => monthShort(m.key)),
+      axisLine: { lineStyle: { color: palette.grid } },
+      axisTick: { show: false },
+      axisLabel: { color: palette.muted, fontSize: 10, interval: 0 }
+    },
+    // Hidden y-axis keeps the block short; the tooltip carries exact counts.
+    yAxis: { type: 'value', minInterval: 1, show: false, splitLine: { show: false } },
+    series: [
+      {
+        type: 'bar',
+        data: months.map((m) => m.count),
+        barWidth: '62%',
+        itemStyle: { borderRadius: [3, 3, 0, 0] },
+        emphasis: { itemStyle: { color: palette.categorical[0] } }
+      }
+    ]
   } as EChartsOption;
 }
 

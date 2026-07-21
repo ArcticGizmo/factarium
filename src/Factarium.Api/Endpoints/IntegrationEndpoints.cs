@@ -388,7 +388,7 @@ public static class IntegrationEndpoints
         });
 
         // Raw records replicated for an integration, grouped into entity-type tabs.
-        group.MapGet("{id:guid}/records/summary", async (Guid id, FactariumDbContext db, CancellationToken ct) =>
+        group.MapGet("{id:guid}/records/summary", async (Guid id, FactariumDbContext db, TimeProvider clock, CancellationToken ct) =>
         {
             var integration = await db.Integrations.FindAsync([id], ct);
             if (integration is null)
@@ -396,14 +396,54 @@ public static class IntegrationEndpoints
                 return Results.NotFound();
             }
 
-            // The repository is shown in the header rather than as its own tab: the
-            // page is always scoped to one repo, so a single-row tab is redundant.
-            var entityTypes = await db.RawRecords
+            // Per-type totals plus the span of source activity — the tab summary shows earliest
+            // and latest alongside a 12-month histogram. The repository is shown in the header
+            // rather than as its own tab, so it's excluded here.
+            var stats = await db.RawRecords
                 .Where(r => r.IntegrationId == id && r.EntityType != "repository")
                 .GroupBy(r => r.EntityType)
-                .Select(g => new { EntityType = g.Key, Count = g.Count() })
-                .OrderBy(x => x.EntityType)
+                .Select(g => new
+                {
+                    EntityType = g.Key,
+                    Count = g.Count(),
+                    Earliest = g.Min(r => r.SourceUpdatedAt),
+                    Latest = g.Max(r => r.SourceUpdatedAt),
+                })
                 .ToListAsync(ct);
+
+            // The 12-month window is the current calendar month back 11 months, bucketed by the
+            // source-reported month. Counted in the DB (grouped by year/month) so we don't
+            // materialise every row just to tally it.
+            var now = clock.GetUtcNow();
+            var windowStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(-11);
+            var monthlyRaw = await db.RawRecords
+                .Where(r => r.IntegrationId == id && r.EntityType != "repository"
+                    && r.SourceUpdatedAt != null && r.SourceUpdatedAt >= windowStart)
+                .GroupBy(r => new { r.EntityType, r.SourceUpdatedAt!.Value.Year, r.SourceUpdatedAt!.Value.Month })
+                .Select(g => new { g.Key.EntityType, g.Key.Year, g.Key.Month, Count = g.Count() })
+                .ToListAsync(ct);
+
+            var months = Enumerable.Range(0, 12)
+                .Select(i => windowStart.AddMonths(i))
+                .Select(d => new { d.Year, d.Month, Key = $"{d.Year:D4}-{d.Month:D2}" })
+                .ToList();
+
+            var entityTypes = stats
+                .OrderBy(s => s.EntityType)
+                .Select(s => new
+                {
+                    s.EntityType,
+                    s.Count,
+                    s.Earliest,
+                    s.Latest,
+                    Monthly = months.Select(m => new
+                    {
+                        m.Key,
+                        Count = monthlyRaw
+                            .FirstOrDefault(x => x.EntityType == s.EntityType && x.Year == m.Year && x.Month == m.Month)?.Count ?? 0,
+                    }).ToList(),
+                })
+                .ToList();
 
             var repositoryPayload = await db.RawRecords
                 .Where(r => r.IntegrationId == id && r.EntityType == "repository")
@@ -420,6 +460,9 @@ public static class IntegrationEndpoints
                 integration.Id,
                 integration.Name,
                 integration.Type,
+                // Integration-wide, but surfaced in each tab's summary so "last run" sits next to
+                // the per-type freshness numbers.
+                LastRun = integration.LastRunCompletedAt,
                 EntityTypes = entityTypes,
                 Repository = repository,
                 // Jira site URL + project key, so the records view can link issue keys to
