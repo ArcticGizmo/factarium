@@ -43,23 +43,51 @@ export function alignSeries(seriesList: Series[]) {
   return { days, lines };
 }
 
-export function lineOption(seriesList: Series[], { legend = false } = {}): EChartsOption {
+// A target reference drawn onto a line chart: a dashed line at `value`, with the "good"
+// region (at or below `value`) shaded faint green. Used for DORA duration targets where
+// lower is better (lead time, cycle time).
+export interface Threshold {
+  value: number;
+  label?: string;
+}
+
+export function lineOption(
+  seriesList: Series[],
+  { legend = false, threshold }: { legend?: boolean; threshold?: Threshold } = {}
+): EChartsOption {
   const { days, lines } = alignSeries(seriesList);
+  const series: Record<string, unknown>[] = lines.map((l) => ({
+    name: l.name,
+    type: 'line',
+    smooth: true,
+    showSymbol: false,
+    lineStyle: { width: 2 },
+    data: l.values
+  }));
+
+  // Render the target as a flat dashed series (not a markLine) so it counts toward the
+  // axis scale — a reference line off-screen is useless. Its area shades the "good" zone
+  // (at or below the target) faint green.
+  if (threshold) {
+    series.push({
+      name: threshold.label ?? `target ${threshold.value}`,
+      type: 'line',
+      showSymbol: false,
+      data: days.map(() => threshold.value),
+      lineStyle: { color: palette.categorical[1], type: 'dashed', width: 1.5 },
+      areaStyle: { color: 'rgba(0, 131, 0, 0.10)', origin: 'start' }
+    });
+  }
+
+  const showLegend = legend || !!threshold;
   return {
     color: palette.series,
     tooltip: { trigger: 'axis' },
-    legend: legend ? { top: 0, textStyle: { color: palette.text }, icon: 'roundRect' } : undefined,
-    grid: { left: 48, right: 16, top: legend ? 32 : 12, bottom: 28 },
+    legend: showLegend ? { top: 0, textStyle: { color: palette.text }, icon: 'roundRect' } : undefined,
+    grid: { left: 48, right: 16, top: showLegend ? 32 : 12, bottom: 28 },
     xAxis: { type: 'category', boundaryGap: false, data: days, ...axisBase },
     yAxis: { type: 'value', splitLine: { lineStyle: { color: palette.grid } }, ...axisBase },
-    series: lines.map((l) => ({
-      name: l.name,
-      type: 'line',
-      smooth: true,
-      showSymbol: false,
-      lineStyle: { width: 2 },
-      data: l.values
-    }))
+    series: series as EChartsOption['series']
   } as EChartsOption;
 }
 

@@ -15,20 +15,35 @@ export interface LabelValue {
 }
 
 // --- /api/live/summary ---
+export interface OverviewTargets {
+  issueCompletionPctMin: number | null;
+}
+
 export interface LiveSummary {
   generatedAt: string;
-  pullRequests: { open: number; mergedLast7d: number };
-  commits: { last7d: number };
+  pullRequests: { open: number; mergedLast7d: number; mergedPrev7d: number };
+  commits: { last7d: number; prev7d: number };
   issues: {
     resolvedLast7d: number;
+    resolvedPrev7d: number;
     completionPct: number;
     done: number;
     total: number;
     byStatus: { status: string; count: number }[];
   };
+  targets: OverviewTargets;
+  // Last-14-day daily values for tile sparklines (empty until the pipeline has run).
+  spark: { commits: number[]; merged: number[]; resolved: number[] };
 }
 
 // --- /api/live/issue-flow ---
+export interface FlowTargets {
+  reopensMax: number | null;
+  backflowMax: number | null;
+  reassignmentsMax: number | null;
+  blockedHoursMax: number | null;
+}
+
 export interface IssueFlowData {
   generatedAt: string;
   // Cumulative hours per (assignee, status); status carries its workflow category.
@@ -36,10 +51,16 @@ export interface IssueFlowData {
   // Cumulative blocked (flagged) hours per assignee.
   blocked: { assignee: string; hours: number }[];
   churn: { reopens: number; reassignments: number; backflow: number };
+  targets: FlowTargets;
 }
 
 // --- /api/dashboards/repo-activity ---
+export interface RepoActivityTargets {
+  unmappedIdentitiesMax: number | null;
+}
+
 export interface RepoActivityData {
+  windowDays: number;
   totals: {
     commits: number;
     prsOpened: number;
@@ -48,6 +69,9 @@ export interface RepoActivityData {
     people: number;
     unmappedIdentities: number;
   };
+  // Prior window, for the volume-tile deltas (entity counts have no previous).
+  previous: { commits: number; prsOpened: number; prsMerged: number };
+  targets: RepoActivityTargets;
   commitsByDay: DayPoint[];
   prsOpenedByDay: DayPoint[];
   prsMergedByDay: DayPoint[];
@@ -56,16 +80,30 @@ export interface RepoActivityData {
 }
 
 // --- /api/dashboards/delivery ---
+export interface DeliveryTotals {
+  deploys: number;
+  avgLeadTimeHours: number;
+  prsMerged: number;
+  issuesResolved: number;
+  avgIssueCycleHours: number;
+  avgReviewLatencyHours: number;
+}
+
+// User-editable targets (nulls = no target set). Persisted via PUT /dashboards/delivery/targets.
+export interface DeliveryTargets {
+  deploysPerWeek: number | null;
+  leadTimeHours: number | null;
+  cycleTimeHours: number | null;
+  reviewLatencyHours: number | null;
+}
+
 export interface DeliveryData {
   deployProxyBranch: string;
-  totals: {
-    deploys: number;
-    avgLeadTimeHours: number;
-    prsMerged: number;
-    issuesResolved: number;
-    avgIssueCycleHours: number;
-    avgReviewLatencyHours: number;
-  };
+  // Length of the current window in days; `previous` covers the window immediately before it.
+  windowDays: number;
+  totals: DeliveryTotals;
+  previous: DeliveryTotals;
+  targets: DeliveryTargets;
   deploysByDay: DayPoint[];
   leadTimeByDay: DayPoint[];
   prsMergedByDay: DayPoint[];

@@ -4,6 +4,7 @@
     subtitle="Where work time goes, per person — replayed from the Jira changelog (unassigned/pre-pickup time excluded)"
   >
     <template #actions>
+      <v-btn size="small" variant="text" prepend-icon="mdi-target" @click="targetsOpen = true">Targets</v-btn>
       <v-btn size="small" variant="text" :loading="loading" @click="load">Refresh</v-btn>
     </template>
 
@@ -17,10 +18,7 @@
     <template v-else-if="data">
       <v-row dense class="mb-2">
         <v-col v-for="tile in tiles" :key="tile.label" cols="6" sm="3">
-          <div class="tile">
-            <div class="tile-value">{{ tile.value }}</div>
-            <div class="tile-label">{{ tile.label }}</div>
-          </div>
+          <KpiTile :label="tile.label" :value="tile.value" :unit="tile.unit" :target="tile.target" />
         </v-col>
       </v-row>
 
@@ -36,6 +34,8 @@
         autoresize
       />
     </template>
+
+    <FlowTargetsDialog v-model="targetsOpen" :targets="data?.targets ?? null" @saved="onTargetsSaved" />
   </BasePage>
 </template>
 
@@ -43,13 +43,20 @@
 import { ref, computed, onMounted } from 'vue';
 import VChart from 'vue-echarts';
 import BasePage from '../../components/BasePage.vue';
+import KpiTile from '../../components/KpiTile.vue';
+import FlowTargetsDialog from './FlowTargetsDialog.vue';
 import { stackedBarOption, barOption } from '../../charts';
-import type { IssueFlowData } from '../../types';
+import type { IssueFlowData, FlowTargets } from '../../types';
 import { api } from '../../api';
 
 const data = ref<IssueFlowData | null>(null);
 const error = ref<string | null>(null);
 const loading = ref(false);
+const targetsOpen = ref(false);
+
+function onTargetsSaved(saved: FlowTargets) {
+  if (data.value) data.value.targets = saved;
+}
 
 async function load() {
   loading.value = true;
@@ -75,15 +82,21 @@ const assignedBlocked = computed(() =>
   (data.value?.blocked ?? []).filter((b) => b.assignee !== UNASSIGNED)
 );
 
+const blockedHours = computed(() => round(assignedBlocked.value.reduce((sum, b) => sum + b.hours, 0)));
+
+// All churn targets are upper bounds (lower is better); a null target shows no chip.
+const cap = (value: number | null | undefined, unit = '') =>
+  value != null ? { value, direction: 'lte' as const, label: `≤ ${value}${unit}` } : null;
+
 const tiles = computed(() => {
   const d = data.value;
   if (!d) return [];
-  const blockedHours = round(assignedBlocked.value.reduce((sum, b) => sum + b.hours, 0));
+  const t = d.targets;
   return [
-    { label: 'Reopens', value: d.churn.reopens },
-    { label: 'Reassignments', value: d.churn.reassignments },
-    { label: 'Backflow', value: d.churn.backflow },
-    { label: 'Blocked (h)', value: blockedHours }
+    { label: 'Reopens', value: d.churn.reopens, unit: '', target: cap(t?.reopensMax) },
+    { label: 'Reassignments', value: d.churn.reassignments, unit: '', target: cap(t?.reassignmentsMax) },
+    { label: 'Backflow', value: d.churn.backflow, unit: '', target: cap(t?.backflowMax) },
+    { label: 'Blocked (h)', value: blockedHours.value, unit: 'h', target: cap(t?.blockedHoursMax, 'h') }
   ];
 });
 

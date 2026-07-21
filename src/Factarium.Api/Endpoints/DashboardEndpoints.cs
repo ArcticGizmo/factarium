@@ -11,12 +11,21 @@ public static class DashboardEndpoints
     {
         var group = app.MapGroup("/api/dashboards");
 
-        group.MapGet("repo-activity", async (FactariumDbContext db, CancellationToken ct) =>
+        // Windowed (default 30 days) so volume tiles can show a "vs previous period" delta,
+        // matching the Delivery dashboard. Entity counts (repos/people/unmapped) are current
+        // state, so they have no previous window.
+        group.MapGet("repo-activity", async (FactariumDbContext db, TimeProvider clock, int? days, CancellationToken ct) =>
         {
+            var windowDays = days is > 0 and <= 365 ? days.Value : 30;
+            var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+            var curFrom = today.AddDays(-windowDays + 1);
+            var prevTo = curFrom.AddDays(-1);
+            var prevFrom = prevTo.AddDays(-windowDays + 1);
+
             async Task<List<object>> SeriesAsync(string metricKey)
             {
                 var points = await db.DailyMetrics
-                    .Where(m => m.MetricKey == metricKey && m.ActorKey == "")
+                    .Where(m => m.MetricKey == metricKey && m.ActorKey == "" && m.Day >= curFrom && m.Day <= today)
                     .OrderBy(m => m.Day)
                     .Select(m => new { m.Day, m.Value })
                     .ToListAsync(ct);
@@ -24,29 +33,38 @@ public static class DashboardEndpoints
                 return points.Select(p => (object)new { day = p.Day.ToString("yyyy-MM-dd"), value = p.Value }).ToList();
             }
 
+            async Task<double> SumAsync(string key, DateOnly from, DateOnly to) =>
+                await db.DailyMetrics
+                    .Where(m => m.MetricKey == key && m.ActorKey == "" && m.Day >= from && m.Day <= to)
+                    .SumAsync(m => (double?)m.Value, ct) ?? 0;
+
             var commitsByActor = await db.DailyMetrics
-                .Where(m => m.MetricKey == "commits" && m.ActorKey != "")
+                .Where(m => m.MetricKey == "commits" && m.ActorKey != "" && m.Day >= curFrom && m.Day <= today)
                 .GroupBy(m => new { m.ActorKey, m.ActorLabel })
                 .Select(g => new { g.Key.ActorLabel, Value = g.Sum(x => x.Value) })
                 .OrderByDescending(x => x.Value)
                 .Take(12)
                 .ToListAsync(ct);
 
-            double Total(string key) => db.DailyMetrics
-                .Where(m => m.MetricKey == key && m.ActorKey == "")
-                .Sum(m => m.Value);
-
             return Results.Ok(new
             {
+                windowDays,
                 totals = new
                 {
-                    commits = Total("commits"),
-                    prsOpened = Total("prs_opened"),
-                    prsMerged = Total("prs_merged"),
+                    commits = await SumAsync("commits", curFrom, today),
+                    prsOpened = await SumAsync("prs_opened", curFrom, today),
+                    prsMerged = await SumAsync("prs_merged", curFrom, today),
                     repositories = await db.CanonicalRepositories.CountAsync(ct),
                     people = await db.People.CountAsync(ct),
                     unmappedIdentities = await db.SourceIdentities.CountAsync(i => i.PersonId == null, ct),
                 },
+                previous = new
+                {
+                    commits = await SumAsync("commits", prevFrom, prevTo),
+                    prsOpened = await SumAsync("prs_opened", prevFrom, prevTo),
+                    prsMerged = await SumAsync("prs_merged", prevFrom, prevTo),
+                },
+                targets = await SettingsHelpers.LoadAsync<RepoActivityTargets>(db, RepoActivityTargets.SettingsKey, ct),
                 commitsByDay = await SeriesAsync("commits"),
                 prsOpenedByDay = await SeriesAsync("prs_opened"),
                 prsMergedByDay = await SeriesAsync("prs_merged"),
@@ -55,46 +73,79 @@ public static class DashboardEndpoints
             });
         });
 
-        group.MapGet("delivery", async (FactariumDbContext db, IOptions<DoraOptions> dora, CancellationToken ct) =>
+        group.MapPut("repo-activity/targets", async (FactariumDbContext db, TimeProvider clock, RepoActivityTargets targets, CancellationToken ct) =>
         {
+            await SettingsHelpers.SaveAsync(db, clock, RepoActivityTargets.SettingsKey, targets, ct);
+            return Results.Ok(targets);
+        });
+
+        // Delivery is windowed (default 30 days) so the tiles can show a "vs previous period"
+        // delta: `totals` covers the current window, `previous` the window immediately before it.
+        group.MapGet("delivery", async (FactariumDbContext db, IOptions<DoraOptions> dora, TimeProvider clock, int? days, CancellationToken ct) =>
+        {
+            var windowDays = days is > 0 and <= 365 ? days.Value : 30;
+            var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+            var curFrom = today.AddDays(-windowDays + 1);
+            var prevTo = curFrom.AddDays(-1);
+            var prevFrom = prevTo.AddDays(-windowDays + 1);
+
+            // Series drive the charts + tile sparklines: current window only, so they read
+            // consistently with the tile totals above them.
             async Task<List<object>> SeriesAsync(string metricKey)
             {
                 var points = await db.DailyMetrics
-                    .Where(m => m.MetricKey == metricKey && m.ActorKey == "")
+                    .Where(m => m.MetricKey == metricKey && m.ActorKey == "" && m.Day >= curFrom && m.Day <= today)
                     .OrderBy(m => m.Day)
                     .Select(m => new { m.Day, m.Value })
                     .ToListAsync(ct);
                 return points.Select(p => (object)new { day = p.Day.ToString("yyyy-MM-dd"), value = p.Value }).ToList();
             }
 
-            double Sum(string key) => db.DailyMetrics.Where(m => m.MetricKey == key && m.ActorKey == "").Sum(m => m.Value);
-            async Task<double> AvgAsync(string key)
+            async Task<double> SumAsync(string key, DateOnly from, DateOnly to) =>
+                await db.DailyMetrics
+                    .Where(m => m.MetricKey == key && m.ActorKey == "" && m.Day >= from && m.Day <= to)
+                    .SumAsync(m => (double?)m.Value, ct) ?? 0;
+
+            async Task<double> AvgAsync(string key, DateOnly from, DateOnly to)
             {
                 var values = await db.DailyMetrics
-                    .Where(m => m.MetricKey == key && m.ActorKey == "")
+                    .Where(m => m.MetricKey == key && m.ActorKey == "" && m.Day >= from && m.Day <= to)
                     .Select(m => m.Value)
                     .ToListAsync(ct);
                 return values.Count == 0 ? 0 : Math.Round(values.Average(), 1);
             }
 
+            async Task<object> TotalsAsync(DateOnly from, DateOnly to) => new
+            {
+                deploys = await SumAsync("deploys", from, to),
+                prsMerged = await SumAsync("prs_merged", from, to),
+                issuesResolved = await SumAsync("issues_resolved", from, to),
+                avgLeadTimeHours = await AvgAsync("pr_lead_time_hours", from, to),
+                avgReviewLatencyHours = await AvgAsync("pr_first_review_hours", from, to),
+                avgIssueCycleHours = await AvgAsync("issue_cycle_time_hours", from, to),
+            };
+
             return Results.Ok(new
             {
                 deployProxyBranch = dora.Value.DeployBranch,
-                totals = new
-                {
-                    deploys = Sum("deploys"),
-                    prsMerged = Sum("prs_merged"),
-                    issuesResolved = Sum("issues_resolved"),
-                    avgLeadTimeHours = await AvgAsync("pr_lead_time_hours"),
-                    avgReviewLatencyHours = await AvgAsync("pr_first_review_hours"),
-                    avgIssueCycleHours = await AvgAsync("issue_cycle_time_hours"),
-                },
+                windowDays,
+                totals = await TotalsAsync(curFrom, today),
+                previous = await TotalsAsync(prevFrom, prevTo),
+                targets = await SettingsHelpers.LoadAsync<DeliveryTargets>(db, DeliveryTargets.SettingsKey, ct),
                 deploysByDay = await SeriesAsync("deploys"),
                 prsMergedByDay = await SeriesAsync("prs_merged"),
                 leadTimeByDay = await SeriesAsync("pr_lead_time_hours"),
                 issuesResolvedByDay = await SeriesAsync("issues_resolved"),
                 cycleTimeByDay = await SeriesAsync("issue_cycle_time_hours"),
             });
+        });
+
+        // Targets live with the dashboard they belong to, edited in-screen and shared via the
+        // settings table. GET is folded into the delivery payload above; PUT persists edits.
+        group.MapPut("delivery/targets", async (FactariumDbContext db, TimeProvider clock, DeliveryTargets targets, CancellationToken ct) =>
+        {
+            await SettingsHelpers.SaveAsync(db, clock, DeliveryTargets.SettingsKey, targets, ct);
+            return Results.Ok(targets);
         });
 
         group.MapGet("claude-code", async (FactariumDbContext db, CancellationToken ct) =>

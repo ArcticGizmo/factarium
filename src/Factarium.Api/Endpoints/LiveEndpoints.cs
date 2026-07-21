@@ -1,3 +1,4 @@
+using Factarium.Application.Configuration;
 using Factarium.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,11 +14,15 @@ public static class LiveEndpoints
     {
         app.MapGet("/api/live/summary", async (FactariumDbContext db, TimeProvider clock, CancellationToken ct) =>
         {
-            var since = clock.GetUtcNow().AddDays(-7);
+            var now = clock.GetUtcNow();
+            var since = now.AddDays(-7);
+            var prevSince = now.AddDays(-14); // the 7 days before the current 7, for the delta.
 
             var openPrs = await db.CanonicalPullRequests.CountAsync(p => p.State == "open", ct);
             var mergedLast7d = await db.CanonicalPullRequests.CountAsync(p => p.MergedAt != null && p.MergedAt >= since, ct);
+            var mergedPrev7d = await db.CanonicalPullRequests.CountAsync(p => p.MergedAt != null && p.MergedAt >= prevSince && p.MergedAt < since, ct);
             var commitsLast7d = await db.CanonicalCommits.CountAsync(c => c.CommittedAt != null && c.CommittedAt >= since, ct);
+            var commitsPrev7d = await db.CanonicalCommits.CountAsync(c => c.CommittedAt != null && c.CommittedAt >= prevSince && c.CommittedAt < since, ct);
 
             var issuesByStatus = await db.CanonicalIssues
                 .GroupBy(i => i.Status)
@@ -28,25 +33,51 @@ public static class LiveEndpoints
             var totalIssues = issuesByStatus.Sum(x => x.Count);
             var doneIssues = await db.CanonicalIssues.CountAsync(i => i.IsClosed, ct);
             var resolvedLast7d = await db.CanonicalIssues.CountAsync(i => i.ClosedAt != null && i.ClosedAt >= since, ct);
+            var resolvedPrev7d = await db.CanonicalIssues.CountAsync(i => i.ClosedAt != null && i.ClosedAt >= prevSince && i.ClosedAt < since, ct);
+
+            // Tile sparklines: last 14 days of the gold daily rollup (empty until the pipeline runs).
+            var sparkFrom = DateOnly.FromDateTime(now.UtcDateTime).AddDays(-13);
+            var sparkTo = DateOnly.FromDateTime(now.UtcDateTime);
+            async Task<List<double>> SparkAsync(string key) =>
+                await db.DailyMetrics
+                    .Where(m => m.MetricKey == key && m.ActorKey == "" && m.Day >= sparkFrom && m.Day <= sparkTo)
+                    .OrderBy(m => m.Day)
+                    .Select(m => m.Value)
+                    .ToListAsync(ct);
 
             return Results.Ok(new
             {
-                generatedAt = clock.GetUtcNow(),
+                generatedAt = now,
                 pullRequests = new
                 {
                     open = openPrs,
                     mergedLast7d,
+                    mergedPrev7d,
                 },
-                commits = new { last7d = commitsLast7d },
+                commits = new { last7d = commitsLast7d, prev7d = commitsPrev7d },
                 issues = new
                 {
                     total = totalIssues,
                     done = doneIssues,
                     resolvedLast7d,
+                    resolvedPrev7d,
                     completionPct = totalIssues == 0 ? 0 : Math.Round(100.0 * doneIssues / totalIssues, 1),
                     byStatus = issuesByStatus.Select(x => new { status = x.Status, count = x.Count }),
                 },
+                targets = await SettingsHelpers.LoadAsync<OverviewTargets>(db, OverviewTargets.SettingsKey, ct),
+                spark = new
+                {
+                    commits = await SparkAsync("commits"),
+                    merged = await SparkAsync("prs_merged"),
+                    resolved = await SparkAsync("issues_resolved"),
+                },
             });
+        });
+
+        app.MapPut("/api/live/summary/targets", async (FactariumDbContext db, TimeProvider clock, OverviewTargets targets, CancellationToken ct) =>
+        {
+            await SettingsHelpers.SaveAsync(db, clock, OverviewTargets.SettingsKey, targets, ct);
+            return Results.Ok(targets);
         });
 
         // Changelog-derived flow: cumulative time-in-status by assignee, blocked time, and
@@ -97,7 +128,14 @@ public static class LiveEndpoints
                     reassignments = issues.Sum(i => i.ReassignmentCount),
                     backflow = issues.Sum(i => i.BackflowCount),
                 },
+                targets = await SettingsHelpers.LoadAsync<FlowTargets>(db, FlowTargets.SettingsKey, ct),
             });
+        });
+
+        app.MapPut("/api/live/issue-flow/targets", async (FactariumDbContext db, TimeProvider clock, FlowTargets targets, CancellationToken ct) =>
+        {
+            await SettingsHelpers.SaveAsync(db, clock, FlowTargets.SettingsKey, targets, ct);
+            return Results.Ok(targets);
         });
 
         return app;

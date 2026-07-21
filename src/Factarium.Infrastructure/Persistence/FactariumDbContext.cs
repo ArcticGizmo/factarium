@@ -3,6 +3,7 @@ using Factarium.Domain.Identity;
 using Factarium.Domain.Metrics;
 using Factarium.Domain.People;
 using Factarium.Domain.Pipeline;
+using Factarium.Domain.Settings;
 using Factarium.Domain.Sync;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -52,6 +53,8 @@ public class FactariumDbContext(DbContextOptions<FactariumDbContext> options)
     public DbSet<DailyMetric> DailyMetrics => Set<DailyMetric>();
 
     public DbSet<PipelineStep> PipelineSteps => Set<PipelineStep>();
+
+    public DbSet<Setting> Settings => Set<Setting>();
 
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
