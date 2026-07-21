@@ -274,6 +274,96 @@
           </tbody>
         </v-table>
 
+        <!-- Changelog summary: each row is one issue's flow, summarised from its history. -->
+        <v-table v-else-if="selectedType === 'issue_changelog'" density="comfortable">
+          <thead>
+            <tr>
+              <th style="width: 120px">Issue</th>
+              <th>Flow</th>
+              <th style="width: 80px">Moves</th>
+              <th style="width: 220px">Churn</th>
+              <th style="width: 170px">Last activity</th>
+              <th style="width: 70px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="records.length === 0">
+              <td colspan="6" class="text-medium-emphasis text-caption py-4">No changelogs in this range.</td>
+            </tr>
+            <tr v-for="r in records" :key="r.id">
+              <td><code>{{ changelog(r).issueId }}</code></td>
+              <td class="text-caption flow-path">{{ changelog(r).statusPath || '—' }}</td>
+              <td>{{ changelog(r).transitions }}</td>
+              <td>
+                <div class="d-flex flex-wrap ga-1">
+                  <v-chip
+                    v-if="changelog(r).reassignments"
+                    size="x-small"
+                    variant="tonal"
+                    prepend-icon="mdi-account-switch"
+                    title="Reassignments"
+                  >
+                    {{ changelog(r).reassignments }}
+                  </v-chip>
+                  <v-chip
+                    v-if="changelog(r).sprintChanges"
+                    size="x-small"
+                    variant="tonal"
+                    prepend-icon="mdi-calendar-sync"
+                    title="Sprint changes (scope moved in/out)"
+                  >
+                    {{ changelog(r).sprintChanges }}
+                  </v-chip>
+                  <v-chip
+                    v-if="changelog(r).reestimations"
+                    size="x-small"
+                    variant="tonal"
+                    prepend-icon="mdi-scale-balance"
+                    title="Story-point re-estimations"
+                  >
+                    {{ changelog(r).reestimations }}
+                  </v-chip>
+                  <v-chip
+                    v-if="changelog(r).reopens"
+                    size="x-small"
+                    variant="tonal"
+                    color="orange"
+                    prepend-icon="mdi-restore"
+                    title="Reopens (resolution cleared)"
+                  >
+                    {{ changelog(r).reopens }}
+                  </v-chip>
+                  <v-chip
+                    v-if="changelog(r).everBlocked"
+                    size="x-small"
+                    variant="tonal"
+                    color="red"
+                    prepend-icon="mdi-flag"
+                    title="Was flagged as blocked at some point"
+                  >
+                    Blocked
+                  </v-chip>
+                  <span
+                    v-if="
+                      !changelog(r).reassignments &&
+                      !changelog(r).sprintChanges &&
+                      !changelog(r).reestimations &&
+                      !changelog(r).reopens &&
+                      !changelog(r).everBlocked
+                    "
+                    class="text-medium-emphasis"
+                    >—</span
+                  >
+                </div>
+              </td>
+              <td class="text-caption">{{ fmt(changelog(r).lastActivity) }}</td>
+              <td>
+                <v-btn size="x-small" variant="text" @click="openRaw(r)">Raw</v-btn>
+              </td>
+            </tr>
+          </tbody>
+        </v-table>
+
         <!-- Generic view for other entity types -->
         <v-table v-else density="comfortable">
           <thead>
@@ -665,6 +755,55 @@ function sprint(r: RawRecordView): SprintRow {
   };
 }
 
+// --- changelog summary extraction ---
+// One issue_changelog record is an issue's whole history; we summarise the compact
+// { entries: [{ at, author_name, changes: [{ field, from_str, to_str, to }] }] } projection
+// (see JiraPullSource) into a per-issue flow snapshot.
+interface ChangelogRow {
+  issueId: string;
+  statusPath: string;
+  transitions: number;
+  reassignments: number;
+  sprintChanges: number;
+  reestimations: number;
+  reopens: number;
+  everBlocked: boolean;
+  lastActivity: string | null;
+}
+
+function changelog(r: RawRecordView): ChangelogRow {
+  const p = (r.payload ?? {}) as Record<string, any>;
+  const entries: any[] = Array.isArray(p.entries) ? p.entries : [];
+  // Stored in fetch order; sort by timestamp so the flow path reads chronologically.
+  const sorted = [...entries].sort((a, b) => String(a?.at ?? '').localeCompare(String(b?.at ?? '')));
+  const allChanges = sorted.flatMap((e) => (Array.isArray(e?.changes) ? e.changes : []));
+
+  const field = (c: any) => String(c?.field ?? '').toLowerCase();
+  const changesOf = (name: string) => allChanges.filter((c) => field(c) === name.toLowerCase());
+  const isStoryPoints = (c: any) => field(c) === 'story points' || field(c) === 'story point estimate';
+
+  // The status path: the first transition's origin, then every landing status in order.
+  const statusChanges = changesOf('status');
+  const path: string[] = [];
+  statusChanges.forEach((c: any, i: number) => {
+    if (i === 0 && c.from_str) path.push(String(c.from_str));
+    if (c.to_str) path.push(String(c.to_str));
+  });
+
+  return {
+    issueId: String(p.issueId ?? r.sourceId ?? ''),
+    statusPath: path.join(' → '),
+    transitions: statusChanges.length,
+    reassignments: changesOf('assignee').length,
+    sprintChanges: changesOf('Sprint').length,
+    reestimations: allChanges.filter(isStoryPoints).length,
+    // A cleared resolution is Jira's signal that an issue was reopened.
+    reopens: changesOf('resolution').filter((c: any) => !c.to).length,
+    everBlocked: changesOf('Flagged').some((c: any) => c.to_str),
+    lastActivity: sorted.length ? (sorted[sorted.length - 1].at ?? null) : null
+  };
+}
+
 function pretty(payload: unknown) {
   return JSON.stringify(payload, null, 2);
 }
@@ -683,6 +822,15 @@ onMounted(loadSummary);
   overflow-x: auto;
   white-space: pre;
   max-height: 60vh;
+}
+
+/* Changelog flow path: wrap across lines so the full status journey stays readable. */
+.flow-path {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 /* vue-datepicker: sized and rounded to sit alongside the compact Vuetify fields. */

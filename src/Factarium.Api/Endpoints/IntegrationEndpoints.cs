@@ -434,7 +434,11 @@ public static class IntegrationEndpoints
             var total = await query.CountAsync(ct);
 
             var records = await query
-                .OrderByDescending(r => r.SourceUpdatedAt ?? r.FetchedAt)
+                // Records with no source activity (e.g. a changelog whose history held nothing
+                // we track) have a null SourceUpdatedAt; sort those to the bottom rather than
+                // letting the FetchedAt fallback float them up among genuinely recent rows.
+                .OrderBy(r => r.SourceUpdatedAt == null)
+                .ThenByDescending(r => r.SourceUpdatedAt ?? r.FetchedAt)
                 .Skip((pageNumber - 1) * size)
                 .Take(size)
                 .Select(r => new
