@@ -7,8 +7,8 @@ namespace Factarium.Application.Sync;
 /// </summary>
 public abstract record SourceConfig;
 
-/// <summary>GitHub connector config: an org and/or an explicit repo list.</summary>
-public sealed record GitHubSourceConfig(string? Org, IReadOnlyList<string> Repos) : SourceConfig;
+/// <summary>GitHub connector config: an org and/or an explicit repo list, and a history floor.</summary>
+public sealed record GitHubSourceConfig(string? Org, IReadOnlyList<string> Repos, DateTimeOffset? SyncSince) : SourceConfig;
 
 /// <summary>Jira connector config: site URL, account email, a single project, a history floor, and token mode.</summary>
 public sealed record JiraSourceConfig(

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Factarium.Api.Scheduling;
+using Factarium.Application.Pipeline;
 using Factarium.Application.Security;
 using Factarium.Application.Sync;
 using Factarium.Domain.Sync;
@@ -14,6 +15,7 @@ public sealed record CreateGitHubIntegrationRequest(
     bool Enabled,
     string? Org,
     List<string>? Repos,
+    DateTimeOffset? SyncSince,
     string? Credential);
 
 public sealed record CreateJiraIntegrationRequest(
@@ -64,6 +66,7 @@ public sealed record UpdateGitHubIntegrationRequest(
     bool Enabled,
     string? Org,
     List<string>? Repos,
+    DateTimeOffset? SyncSince,
     string? Credential);
 
 /// <summary>Update the fields common to every integration (schedule, enablement, credential).</summary>
@@ -176,6 +179,7 @@ public static class IntegrationEndpoints
                     ScheduleCron = request.Cron,
                     Org = Blank(request.Org),
                     Repos = Clean(request.Repos),
+                    SyncSince = request.SyncSince,
                 },
                 request.Credential, db, protector, scheduler, clock, ct));
 
@@ -208,6 +212,7 @@ public static class IntegrationEndpoints
             gh.ScheduleCron = Blank(request.Cron);
             gh.Org = Blank(request.Org);
             gh.Repos = Clean(request.Repos);
+            gh.SyncSince = request.SyncSince;
             if (!string.IsNullOrWhiteSpace(request.Credential))
             {
                 gh.EncryptedCredential = protector.Protect(request.Credential);
@@ -611,7 +616,11 @@ public static class IntegrationEndpoints
         });
 
         group.MapDelete("{id:guid}", async (
-            Guid id, FactariumDbContext db, IIntegrationScheduler scheduler, CancellationToken ct) =>
+            Guid id,
+            FactariumDbContext db,
+            IIntegrationScheduler scheduler,
+            IPipelineRunner pipeline,
+            CancellationToken ct) =>
         {
             var integration = await db.Integrations.FindAsync([id], ct);
             if (integration is null)
@@ -620,8 +629,32 @@ public static class IntegrationEndpoints
             }
 
             await scheduler.UnscheduleAsync(id, ct);
+
+            // Removing the connection cascades its bronze raw records and sync-run history (both
+            // FK ON DELETE CASCADE). The derived silver (canonical) and gold (daily_metrics) tiers
+            // key on source, not integration, and the transforms only ever upsert — so nothing
+            // prunes them on their own, and the connection's commits/PRs/metrics would otherwise
+            // linger on the dashboards. Clear the derived tiers and rebuild them from the bronze
+            // that remains: that drops exactly the deleted connection's contribution while leaving
+            // every other connection's data intact. Identity ↔ person mappings live in their own
+            // tables and are deliberately left untouched. (daily_metrics is rebuilt by the aggregate
+            // step, which clears it itself, so it isn't wiped here.)
             db.Integrations.Remove(integration);
             await db.SaveChangesAsync(ct);
+
+            await db.CanonicalRepositories.ExecuteDeleteAsync(ct);
+            await db.CanonicalCommits.ExecuteDeleteAsync(ct);
+            await db.CanonicalPullRequests.ExecuteDeleteAsync(ct);
+            await db.CanonicalReviews.ExecuteDeleteAsync(ct);
+            await db.CanonicalIssues.ExecuteDeleteAsync(ct);
+            await db.CanonicalIssueSegments.ExecuteDeleteAsync(ct);
+            await db.CanonicalIssueSprintMemberships.ExecuteDeleteAsync(ct);
+            await db.CanonicalUsageMetrics.ExecuteDeleteAsync(ct);
+            await db.CanonicalWorklogs.ExecuteDeleteAsync(ct);
+
+            // force: bypass the staleness gates so the rebuild runs even though no new bronze arrived.
+            await pipeline.RunAsync(force: true, ct);
+
             return Results.NoContent();
         });
 
@@ -662,7 +695,7 @@ public static class IntegrationEndpoints
     /// <summary>The type-specific fields projected for a row, so each page can bind its own config.</summary>
     private static object? ConfigFor(Integration integration) => integration switch
     {
-        GitHubIntegration gh => new { gh.Org, gh.Repos },
+        GitHubIntegration gh => new { gh.Org, gh.Repos, gh.SyncSince },
         JiraIntegration jira => new { jira.BaseUrl, jira.Email, jira.ProjectKey, jira.SyncSince, jira.ScopedToken },
         TempoIntegration tempo => new { tempo.ProjectId, tempo.SyncSince },
         _ => null,

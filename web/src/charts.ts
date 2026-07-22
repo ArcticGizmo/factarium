@@ -177,9 +177,11 @@ export function monthlyBarOption(months: RecordMonthCount[]): EChartsOption {
   } as EChartsOption;
 }
 
-// Horizontal bar for a single magnitude series (commits by person), value-labelled.
-export function barOption(items: LabelValue[]): EChartsOption {
-  const sorted = [...items].sort((a, b) => a.value - b.value);
+// Horizontal bar for a single magnitude series (e.g. reviews by reviewer), value-labelled.
+// By default rows sort by magnitude; pass `sort: false` to keep the caller's order (e.g. an
+// ordered distribution) — the input is reversed so the first entry sits at the top.
+export function barOption(items: LabelValue[], { sort = true }: { sort?: boolean } = {}): EChartsOption {
+  const sorted = sort ? [...items].sort((a, b) => a.value - b.value) : [...items].reverse();
   return {
     color: palette.series,
     tooltip: { trigger: 'item' },

@@ -176,7 +176,7 @@ public class GitHubPullSourceTests
             IntegrationId = Guid.NewGuid(),
             IntegrationName = "test",
             Credential = "token",
-            Config = new GitHubSourceConfig(Org: null, Repos: ["acme/repo1"]),
+            Config = new GitHubSourceConfig(Org: null, Repos: ["acme/repo1"], SyncSince: null),
             Cursor = cursor,
             Sink = sink,
             Reader = sink,
@@ -191,6 +191,75 @@ public class GitHubPullSourceTests
         Assert.Equal(total, sink.Facts.Count(f => f.EntityType == "commit"));
         Assert.True(commitFlushes.Count >= 3, $"expected multiple flushes, got {commitFlushes.Count}");
         Assert.All(commitFlushes, size => Assert.True(size <= 100));
+    }
+
+    [Fact]
+    public async Task Commit_sync_uses_SyncSince_as_the_since_floor_when_no_cursor()
+    {
+        var query = await CaptureCommitsQueryAsync(
+            syncSince: DateTimeOffset.Parse("2026-01-01T00:00:00Z"), commitCursor: null);
+
+        Assert.Contains("2026-01-01T00:00:00", Uri.UnescapeDataString(query ?? ""));
+    }
+
+    [Fact]
+    public async Task Commit_sync_prefers_the_cursor_over_an_older_SyncSince()
+    {
+        var query = Uri.UnescapeDataString(await CaptureCommitsQueryAsync(
+            syncSince: DateTimeOffset.Parse("2026-01-01T00:00:00Z"),
+            commitCursor: "2026-05-01T00:00:00Z") ?? "");
+
+        // The incremental cursor is later than the floor, so it wins.
+        Assert.Contains("2026-05-01T00:00:00", query);
+        Assert.DoesNotContain("2026-01-01", query);
+    }
+
+    // Runs a commit sync and returns the raw query string sent to the commits endpoint, so a test
+    // can assert on the `since` bound derived from the SyncSince floor and/or the cursor.
+    private static async Task<string?> CaptureCommitsQueryAsync(DateTimeOffset? syncSince, string? commitCursor)
+    {
+        string? commitsQuery = null;
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path == "/repos/acme/repo1")
+            {
+                return StubHttpMessageHandler.Json(
+                    """{ "id": 1, "full_name": "acme/repo1", "name": "repo1", "owner": { "login": "acme", "id": 42 } }""");
+            }
+
+            if (path == "/repos/acme/repo1/commits")
+            {
+                commitsQuery = request.RequestUri!.Query;
+                return StubHttpMessageHandler.Json("[]");
+            }
+
+            return StubHttpMessageHandler.NotFound();
+        });
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") };
+        var client = new GitHubApiClient(http, TimeProvider.System, NullLogger<GitHubApiClient>.Instance);
+        var source = new GitHubPullSource(client, NullLogger<GitHubPullSource>.Instance);
+        var sink = new RecordingRawRecordSink();
+        var cursor = new InMemoryCursorStore();
+        if (commitCursor is not null)
+        {
+            cursor.Set("commits:acme/repo1", commitCursor);
+        }
+
+        var context = new SyncContext
+        {
+            IntegrationId = Guid.NewGuid(),
+            IntegrationName = "test",
+            Credential = "token",
+            Config = new GitHubSourceConfig(Org: null, Repos: ["acme/repo1"], SyncSince: syncSince),
+            Cursor = cursor,
+            Sink = sink,
+            Reader = sink,
+        };
+
+        await source.PullEntityAsync("repository", context, CancellationToken.None);
+        await source.PullEntityAsync("commit", context, CancellationToken.None);
+        return commitsQuery;
     }
 
     // A commits page of n entries with unique shas and ascending committer dates.
@@ -223,7 +292,7 @@ public class GitHubPullSourceTests
             IntegrationId = Guid.NewGuid(),
             IntegrationName = "test",
             Credential = "token",
-            Config = new GitHubSourceConfig(Org: null, Repos: ["acme/repo1"]),
+            Config = new GitHubSourceConfig(Org: null, Repos: ["acme/repo1"], SyncSince: null),
             Cursor = cursor,
             Sink = sink,
             Reader = sink,

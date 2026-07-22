@@ -205,6 +205,10 @@ internal sealed class GitHubTransformService(FactariumDbContext db, TimeProvider
             pr.BaseRef = Str(payload, "base_ref");
             pr.CreatedAt = Timestamp(payload, "created_at");
             pr.ClosedAt = Timestamp(payload, "closed_at");
+            pr.Additions = Int(payload, "additions");
+            pr.Deletions = Int(payload, "deletions");
+            pr.ChangedFiles = Int(payload, "changed_files");
+            pr.ReviewCommentCount = Int(payload, "review_comment_count");
             pr.AuthorLogin = login;
             pr.AuthorIdentityId = Resolve(identities, login);
         }
@@ -265,6 +269,11 @@ internal sealed class GitHubTransformService(FactariumDbContext db, TimeProvider
     private static string? Str(JsonElement element, string property) =>
         element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
+            : null;
+
+    private static int? Int(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number
+            ? value.GetInt32()
             : null;
 
     private static string? ExternalId(JsonElement element, string property) =>

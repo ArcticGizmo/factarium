@@ -11,12 +11,15 @@ namespace Factarium.Api.Endpoints;
 /// </summary>
 public static class DebugEndpoints
 {
-    // Every data table except schema/auth plumbing (app_users, migrations history,
-    // and the Data Protection key ring are preserved).
+    // Every data table except schema/auth plumbing (app_users, migrations history, dashboard
+    // settings, and the Data Protection key ring are preserved). sync_runs cascades from
+    // integrations. All canonical tiers are listed explicitly — they have no FK to integrations,
+    // so CASCADE won't reach them.
     private const string TruncateSql = """
         TRUNCATE integrations, raw_records,
                  canonical_repositories, canonical_commits, canonical_pull_requests,
-                 canonical_reviews, canonical_issues, canonical_usage_metrics,
+                 canonical_reviews, canonical_issues, canonical_issue_segments,
+                 canonical_issue_sprint_memberships, canonical_usage_metrics, canonical_worklogs,
                  daily_metrics, source_identities, people, pipeline_steps
         RESTART IDENTITY CASCADE;
         """;

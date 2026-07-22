@@ -1,5 +1,5 @@
 <template>
-  <BasePage title="Repositories" :subtitle="`Repo / PR activity · last ${windowDays} days vs the ${windowDays} before`">
+  <BasePage title="Repositories" :subtitle="`Code review & repo health · last ${windowDays} days vs the ${windowDays} before`">
     <template #actions>
       <v-btn size="small" variant="text" prepend-icon="mdi-target" @click="targetsOpen = true">Targets</v-btn>
       <v-btn size="small" variant="text" :loading="loading" @click="load">Refresh</v-btn>
@@ -12,8 +12,9 @@
         <KpiTile
           :label="tile.label"
           :value="tile.value"
+          :unit="tile.unit"
           :previous="tile.previous"
-          :spark="tile.spark"
+          :lower-is-better="tile.lowerIsBetter"
           :target="tile.target"
         />
       </v-col>
@@ -21,22 +22,53 @@
 
     <v-row>
       <v-col cols="12" md="6">
-        <div class="chart-title">Commits over time</div>
-        <v-chart class="chart" :option="commitsOption" autoresize />
-      </v-col>
-      <v-col cols="12" md="6">
-        <div class="chart-title">Pull requests over time</div>
-        <v-chart class="chart" :option="prOption" autoresize />
-      </v-col>
-      <v-col cols="12" md="6">
-        <div class="chart-title">Commits by person</div>
-        <v-chart class="chart" :option="byActorOption" autoresize />
+        <div class="chart-title">Review coverage over time (% of merged PRs reviewed)</div>
+        <v-chart class="chart" :option="coverageOption" autoresize />
       </v-col>
       <v-col cols="12" md="6">
         <div class="chart-title">Time to first review (avg hours/day)</div>
         <v-chart class="chart" :option="latencyOption" autoresize />
       </v-col>
+      <v-col cols="12" md="6">
+        <div class="chart-title">PR size distribution (merged PRs, lines changed)</div>
+        <v-chart class="chart" :option="sizeOption" autoresize />
+      </v-col>
+      <v-col cols="12" md="6">
+        <div class="chart-title">Reviews by reviewer</div>
+        <v-chart class="chart" :option="reviewerOption" autoresize />
+      </v-col>
     </v-row>
+
+    <div class="chart-title mt-2">
+      By repository <span class="text-medium-emphasis">· {{ totals?.repositories ?? 0 }} tracked</span>
+    </div>
+    <v-table density="compact" class="repo-table">
+      <thead>
+        <tr>
+          <th>Repository</th>
+          <th class="text-right">Commits</th>
+          <th class="text-right">PRs merged</th>
+          <th class="text-right">Review coverage</th>
+          <th class="text-right">Median PR size</th>
+          <th class="text-right">Avg review latency</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="row in repoTable" :key="row.repo">
+          <td class="repo-name">{{ row.repo }}</td>
+          <td class="text-right">{{ row.commits }}</td>
+          <td class="text-right">{{ row.prsMerged }}</td>
+          <td class="text-right">{{ row.prsMerged ? `${row.reviewCoveragePct}%` : '—' }}</td>
+          <td class="text-right">{{ row.medianPrLines ? `${row.medianPrLines} lines` : '—' }}</td>
+          <td class="text-right">
+            {{ row.avgReviewLatencyHours != null ? `${row.avgReviewLatencyHours} h` : '—' }}
+          </td>
+        </tr>
+        <tr v-if="!repoTable.length">
+          <td colspan="6" class="text-medium-emphasis text-center py-4">No repository activity in this window.</td>
+        </tr>
+      </tbody>
+    </v-table>
 
     <RepoTargetsDialog v-model="targetsOpen" :targets="data?.targets ?? null" @saved="onTargetsSaved" />
   </BasePage>
@@ -76,50 +108,83 @@ function onTargetsSaved(saved: RepoActivityTargets) {
 }
 
 const windowDays = computed(() => data.value?.windowDays ?? 30);
-const vals = (points: { value: number }[] | undefined) => (points ?? []).map((p) => p.value);
+const totals = computed(() => data.value?.totals ?? null);
+const repoTable = computed(() => data.value?.repoTable ?? []);
 
 const tiles = computed(() => {
   const d = data.value;
   if (!d) return [];
   const t = d.totals;
   const p = d.previous;
-  const unmappedMax = d.targets?.unmappedIdentitiesMax;
+  const g = d.targets;
+  const gte = (v: number | null | undefined, label: string) =>
+    v != null ? { value: v, direction: 'gte' as const, label } : null;
+  const lte = (v: number | null | undefined, label: string) =>
+    v != null ? { value: v, direction: 'lte' as const, label } : null;
   return [
-    { label: 'Commits', value: t.commits, previous: p.commits, spark: vals(d.commitsByDay), target: null },
-    { label: 'PRs opened', value: t.prsOpened, previous: p.prsOpened, spark: vals(d.prsOpenedByDay), target: null },
-    { label: 'PRs merged', value: t.prsMerged, previous: p.prsMerged, spark: vals(d.prsMergedByDay), target: null },
-    { label: 'Repositories', value: t.repositories, previous: null, spark: undefined, target: null },
-    { label: 'People', value: t.people, previous: null, spark: undefined, target: null },
+    {
+      label: 'Review coverage',
+      value: t.reviewCoveragePct,
+      unit: '%',
+      previous: p.reviewCoveragePct,
+      lowerIsBetter: false,
+      target: gte(g.reviewCoveragePctMin, `≥ ${g.reviewCoveragePctMin}%`)
+    },
+    {
+      label: 'Median PR size',
+      value: t.medianPrLines,
+      unit: ' lines',
+      previous: p.medianPrLines,
+      lowerIsBetter: true,
+      target: lte(g.medianPrLinesMax, `≤ ${g.medianPrLinesMax}`)
+    },
+    {
+      label: 'Review depth (comments / PR)',
+      value: t.reviewDepth,
+      unit: '',
+      previous: p.reviewDepth,
+      lowerIsBetter: false,
+      target: null
+    },
+    {
+      label: 'PR abandon rate',
+      value: t.abandonRatePct,
+      unit: '%',
+      previous: p.abandonRatePct,
+      lowerIsBetter: true,
+      target: lte(g.abandonRatePctMax, `≤ ${g.abandonRatePctMax}%`)
+    },
+    {
+      label: 'Oldest open PR',
+      value: t.oldestOpenPrDays,
+      unit: ' days',
+      previous: null,
+      lowerIsBetter: true,
+      target: lte(g.oldestOpenPrDaysMax, `≤ ${g.oldestOpenPrDaysMax}d`)
+    },
     {
       label: 'Unmapped identities',
       value: t.unmappedIdentities,
+      unit: '',
       previous: null,
-      spark: undefined,
+      lowerIsBetter: true,
       // A data-quality target: unmapped identities aren't attributed to anyone.
-      target: unmappedMax != null
-        ? { value: unmappedMax, direction: 'lte' as const, label: `≤ ${unmappedMax}` }
-        : null
+      target: lte(g.unmappedIdentitiesMax, `≤ ${g.unmappedIdentitiesMax}`)
     }
   ];
 });
 
-const commitsOption = computed(() => lineOption([{ name: 'Commits', points: data.value?.commitsByDay ?? [] }]));
-
-const prOption = computed(() =>
-  lineOption(
-    [
-      { name: 'Opened', points: data.value?.prsOpenedByDay ?? [] },
-      { name: 'Merged', points: data.value?.prsMergedByDay ?? [] }
-    ],
-    { legend: true }
-  )
+const coverageOption = computed(() =>
+  lineOption([{ name: 'Coverage %', points: data.value?.coverageByDay ?? [] }])
 );
 
 const latencyOption = computed(() =>
   lineOption([{ name: 'Hours to first review', points: data.value?.reviewLatencyByDay ?? [] }])
 );
 
-const byActorOption = computed(() => barOption(data.value?.commitsByActor ?? []));
+const sizeOption = computed(() => barOption(data.value?.prSizeDistribution ?? [], { sort: false }));
+
+const reviewerOption = computed(() => barOption(data.value?.reviewsByReviewer ?? []));
 </script>
 
 <style scoped>
@@ -130,5 +195,13 @@ const byActorOption = computed(() => barOption(data.value?.commitsByActor ?? [])
 }
 .chart {
   height: 260px;
+}
+.repo-table {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+}
+.repo-name {
+  font-family: var(--v-font-monospace, monospace);
+  font-size: 0.82rem;
 }
 </style>

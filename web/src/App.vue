@@ -8,6 +8,7 @@
       <v-divider />
       <v-list nav density="comfortable">
         <NavItem to="/overview" icon="mdi-pulse" title="Overview" />
+        <NavItem to="/data-health" icon="mdi-database-check-outline" title="Data health" />
         <NavItem to="/repositories" icon="mdi-source-branch" title="Repositories" />
         <NavItem to="/delivery" icon="mdi-rocket-launch-outline" title="Delivery" />
         <NavItem to="/flow" icon="mdi-chart-timeline-variant" title="Flow" />

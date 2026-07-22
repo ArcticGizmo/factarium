@@ -206,7 +206,7 @@ internal sealed class IntegrationSyncService(
 
     private static SourceConfig? BuildConfig(Integration integration) => integration switch
     {
-        GitHubIntegration gh => new GitHubSourceConfig(gh.Org, gh.Repos),
+        GitHubIntegration gh => new GitHubSourceConfig(gh.Org, gh.Repos, gh.SyncSince),
         JiraIntegration jira => new JiraSourceConfig(jira.BaseUrl, jira.Email, jira.ProjectKey, jira.SyncSince, jira.ScopedToken),
         TempoIntegration tempo => new TempoSourceConfig(tempo.ProjectId, tempo.SyncSince),
         ClaudeIntegration => new ClaudeSourceConfig(),

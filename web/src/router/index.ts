@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import type { RouteRecordRaw } from 'vue-router';
 import OverviewPage from '../features/overview/OverviewPage.vue';
+import DataHealthPage from '../features/data-health/DataHealthPage.vue';
 import RepositoriesPage from '../features/repositories/RepositoriesPage.vue';
 import DeliveryPage from '../features/delivery/DeliveryPage.vue';
 import FlowPage from '../features/flow/FlowPage.vue';
@@ -17,6 +18,7 @@ import IntegrationRecordsPage from '../features/integrations/IntegrationRecordsP
 export const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/overview' },
   { path: '/overview', name: 'overview', component: OverviewPage },
+  { path: '/data-health', name: 'data-health', component: DataHealthPage },
   { path: '/repositories', name: 'repositories', component: RepositoriesPage },
   { path: '/delivery', name: 'delivery', component: DeliveryPage },
   { path: '/flow', name: 'flow', component: FlowPage },

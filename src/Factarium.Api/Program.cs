@@ -38,7 +38,10 @@ try
             .WithIdentity("pipeline-cron")
             .WithCronSchedule("0 0/5 * * * ?"));
     });
-    builder.Services.AddQuartzHostedService(options => options.WaitForJobsToComplete = true);
+    // Don't block shutdown on in-flight jobs: a long repo sync would otherwise hold the process
+    // open, making a dev session painful to kill. Jobs are interrupted and resume from their
+    // cursor on the next run, so a cut-short sync is safe.
+    builder.Services.AddQuartzHostedService(options => options.WaitForJobsToComplete = false);
     builder.Services.AddTransient<IntegrationSyncJob>();
     builder.Services.AddSingleton<IIntegrationScheduler, QuartzIntegrationScheduler>();
     builder.Services.AddHostedService<SchedulerStartup>();

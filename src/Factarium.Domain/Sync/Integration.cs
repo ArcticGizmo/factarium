@@ -56,6 +56,13 @@ public sealed class GitHubIntegration : Integration
 
     /// <summary>Explicit repos as "owner/name", in addition to (or instead of) an org.</summary>
     public List<string> Repos { get; set; } = [];
+
+    /// <summary>
+    /// Historical floor for the first sync: commits dated before this, and pull requests with no
+    /// activity since it, are not pulled — so a connection can start recent rather than replicating
+    /// years of history. The incremental commit/PR cursors take over once they pass this.
+    /// </summary>
+    public DateTimeOffset? SyncSince { get; set; }
 }
 
 /// <summary>Jira Cloud connection: a site, an account email, and a single project. Pull-based.</summary>

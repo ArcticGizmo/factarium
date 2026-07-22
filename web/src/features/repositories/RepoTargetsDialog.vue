@@ -12,6 +12,38 @@
         <div v-if="error" class="text-error text-body-2 mb-3">{{ error }}</div>
 
         <v-text-field
+          v-model="form.reviewCoveragePctMin"
+          label="Review coverage — at least (%)"
+          type="number"
+          density="comfortable"
+          class="mb-3"
+          hide-details
+        />
+        <v-text-field
+          v-model="form.medianPrLinesMax"
+          label="Median PR size — at most (lines changed)"
+          type="number"
+          density="comfortable"
+          class="mb-3"
+          hide-details
+        />
+        <v-text-field
+          v-model="form.oldestOpenPrDaysMax"
+          label="Oldest open PR — at most (days)"
+          type="number"
+          density="comfortable"
+          class="mb-3"
+          hide-details
+        />
+        <v-text-field
+          v-model="form.abandonRatePctMax"
+          label="PR abandon rate — at most (%)"
+          type="number"
+          density="comfortable"
+          class="mb-3"
+          hide-details
+        />
+        <v-text-field
           v-model="form.unmappedIdentitiesMax"
           label="Unmapped identities — at most (0 = everyone mapped)"
           type="number"
@@ -43,7 +75,13 @@ const emit = defineEmits(['update:modelValue', 'saved']);
 const busy = ref(false);
 const error = ref<string | null>(null);
 
-const form = reactive({ unmappedIdentitiesMax: '' });
+const form = reactive({
+  reviewCoveragePctMin: '',
+  medianPrLinesMax: '',
+  oldestOpenPrDaysMax: '',
+  abandonRatePctMax: '',
+  unmappedIdentitiesMax: ''
+});
 
 const str = (n: number | null | undefined) => (n === null || n === undefined ? '' : String(n));
 
@@ -52,7 +90,12 @@ watch(
   (open) => {
     if (!open) return;
     error.value = null;
-    form.unmappedIdentitiesMax = str(props.targets?.unmappedIdentitiesMax);
+    const t = props.targets;
+    form.reviewCoveragePctMin = str(t?.reviewCoveragePctMin);
+    form.medianPrLinesMax = str(t?.medianPrLinesMax);
+    form.oldestOpenPrDaysMax = str(t?.oldestOpenPrDaysMax);
+    form.abandonRatePctMax = str(t?.abandonRatePctMax);
+    form.unmappedIdentitiesMax = str(t?.unmappedIdentitiesMax);
   }
 );
 
@@ -71,7 +114,13 @@ async function save() {
   busy.value = true;
   error.value = null;
   try {
-    const payload: RepoActivityTargets = { unmappedIdentitiesMax: num(form.unmappedIdentitiesMax) };
+    const payload: RepoActivityTargets = {
+      reviewCoveragePctMin: num(form.reviewCoveragePctMin),
+      medianPrLinesMax: num(form.medianPrLinesMax),
+      oldestOpenPrDaysMax: num(form.oldestOpenPrDaysMax),
+      abandonRatePctMax: num(form.abandonRatePctMax),
+      unmappedIdentitiesMax: num(form.unmappedIdentitiesMax)
+    };
     const saved = await api.url('/dashboards/repo-activity/targets').json(payload).put().json<RepoActivityTargets>();
     emit('saved', saved);
     close();

@@ -38,7 +38,24 @@
           hint="e.g. acme-inc/api"
         />
 
-        <CronField v-model="form.cron" class="mt-3" />
+        <div class="mt-4 mb-1 text-body-2">Sync since</div>
+        <VueDatePicker
+          v-model="form.syncSince"
+          dark
+          auto-apply
+          :enable-time-picker="false"
+          :max-date="today"
+          format="yyyy-MM-dd"
+          placeholder="Earliest history to pull"
+          class="sync-since mb-1"
+        />
+        <div class="text-caption text-medium-emphasis">
+          Commits before this date — and pull requests with no activity since it — are skipped, so you
+          don't replicate years of history. Blank = everything. Only bounds the first sync; later syncs
+          follow the cursor.
+        </div>
+
+        <CronField v-model="form.cron" class="mt-4" />
 
         <v-switch
           v-model="form.enabled"
@@ -52,13 +69,29 @@
         <v-text-field
           v-model="form.credential"
           :label="isEdit ? 'GitHub token (leave blank to keep current)' : 'GitHub personal access token'"
-          placeholder="ghp_…"
+          placeholder="github_pat_…"
           type="password"
           density="comfortable"
           class="mt-3"
-          persistent-hint
-          :hint="credentialHint"
+          hide-details
         />
+        <div class="text-caption text-medium-emphasis mt-2">
+          <template v-if="isEdit && integration?.hasCredential">
+            A token is stored (encrypted). Leave blank to keep it.
+          </template>
+          <template v-else>
+            Create a
+            <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener noreferrer">
+              fine-grained personal access token</a>
+            with these read-only repository permissions:
+            <ul class="perm-list">
+              <li>Metadata — read only</li>
+              <li>Contents — read only</li>
+              <li>Pull requests — read only</li>
+            </ul>
+            Stored encrypted.
+          </template>
+        </div>
       </v-card-text>
 
       <v-card-actions class="px-4 pb-4">
@@ -74,6 +107,8 @@
 
 <script setup lang="ts">
 import { reactive, ref, computed, watch } from 'vue';
+import { VueDatePicker } from '@vuepic/vue-datepicker';
+import '@vuepic/vue-datepicker/dist/main.css';
 import CronField from '../../components/CronField.vue';
 import type { Integration, GitHubConfig } from '../../types';
 import { api } from '../../api';
@@ -88,20 +123,17 @@ const emit = defineEmits(['update:modelValue', 'saved']);
 const isEdit = computed(() => !!props.integration);
 const busy = ref(false);
 const error = ref<string | null>(null);
+// "Sync since" is a historical bound, so never let it point into the future.
+const today = new Date();
 
 const form = reactive({
   repos: [] as string[],
   repo: '',
+  syncSince: null as Date | null,
   cron: '',
   enabled: false,
   credential: ''
 });
-
-const credentialHint = computed(() =>
-  isEdit.value && props.integration?.hasCredential
-    ? 'A token is stored (encrypted). Leave blank to keep it.'
-    : 'GitHub → Settings → Developer settings → Personal access tokens (repo read scope). Stored encrypted.'
-);
 
 const canSave = computed(() => (isEdit.value ? form.repo.trim().length > 0 : form.repos.length > 0));
 
@@ -115,11 +147,13 @@ watch(
       const config = props.integration.config as GitHubConfig | null;
       form.repo = config?.repos?.[0] ?? config?.org ?? props.integration.name;
       form.repos = [];
+      form.syncSince = config?.syncSince ? new Date(config.syncSince) : null;
       form.cron = props.integration.scheduleCron ?? '';
       form.enabled = props.integration.enabled;
     } else {
       form.repos = [];
       form.repo = '';
+      form.syncSince = null;
       form.cron = '';
       form.enabled = false;
     }
@@ -131,9 +165,17 @@ function close() {
   emit('update:modelValue', false);
 }
 
+// Inclusive-from-midnight in local time, matching the date-only picker.
+function startOfDay(d: Date): string {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x.toISOString();
+}
+
 async function save() {
   busy.value = true;
   error.value = null;
+  const syncSince = form.syncSince ? startOfDay(form.syncSince) : null;
   try {
     if (isEdit.value && props.integration) {
       const repo = form.repo.trim();
@@ -146,6 +188,7 @@ async function save() {
           enabled: form.enabled,
           org: null,
           repos: [repo],
+          syncSince,
           credential: form.credential || null
         })
         .put()
@@ -163,6 +206,7 @@ async function save() {
               enabled: form.enabled,
               org: null,
               repos: [repo],
+              syncSince,
               credential: form.credential || null
             })
             .post()
@@ -184,3 +228,21 @@ async function save() {
   }
 }
 </script>
+
+<style scoped>
+.perm-list {
+  margin: 4px 0 4px 20px;
+  padding: 0;
+}
+.perm-list li {
+  list-style: disc;
+}
+a {
+  color: rgb(var(--v-theme-primary));
+  text-decoration: underline;
+}
+.sync-since :deep(.dp__input) {
+  font-size: 0.875rem;
+  border-radius: 4px;
+}
+</style>

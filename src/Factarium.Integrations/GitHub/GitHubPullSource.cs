@@ -160,6 +160,9 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
     {
         var cursorKey = $"pulls:{fullName}";
         var lastCursor = ParseTimestamp(context.Cursor.Get(cursorKey));
+        // The later of the incremental cursor and the history floor: the floor bounds the first
+        // sync; the cursor takes over once it advances past it.
+        var floor = Latest((context.Config as GitHubSourceConfig)?.SyncSince, lastCursor);
         var facts = new List<RawFact>();
         var written = 0;
         DateTimeOffset? maxUpdated = lastCursor;
@@ -169,8 +172,9 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
         {
             var updatedAt = GetTimestamp(pr, "updated_at");
 
-            // Sorted newest-first: once we reach records at/older than the cursor, stop.
-            if (lastCursor is not null && updatedAt is not null && updatedAt <= lastCursor)
+            // Sorted newest-updated first: once we reach PRs at/older than the floor, stop —
+            // both incremental catch-up and the "don't pull ancient history" bound share this exit.
+            if (floor is not null && updatedAt is not null && updatedAt <= floor)
             {
                 break;
             }
@@ -215,14 +219,17 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
     {
         var cursorKey = $"commits:{fullName}";
         var lastCursor = ParseTimestamp(context.Cursor.Get(cursorKey));
+        // The later of the incremental cursor and the history floor bounds how far back we page:
+        // the floor caps the first sync; the cursor takes over once it advances past it.
+        var since = Latest((context.Config as GitHubSourceConfig)?.SyncSince, lastCursor);
         var facts = new List<RawFact>();
         var written = 0;
         DateTimeOffset? maxCommitted = lastCursor;
 
         var url = $"repos/{fullName}/commits?per_page=100";
-        if (lastCursor is not null)
+        if (since is not null)
         {
-            url += $"&since={lastCursor.Value.ToUniversalTime():o}";
+            url += $"&since={since.Value.ToUniversalTime():o}";
         }
 
         await foreach (var commit in client.GetPagedAsync(url, token, cancellationToken))
@@ -499,4 +506,8 @@ public sealed class GitHubPullSource(GitHubApiClient client, ILogger<GitHubPullS
 
     private static DateTimeOffset? ParseTimestamp(string? value) =>
         DateTimeOffset.TryParse(value, out var parsed) ? parsed : null;
+
+    /// <summary>The later of two optional timestamps (null is treated as "no bound").</summary>
+    private static DateTimeOffset? Latest(DateTimeOffset? a, DateTimeOffset? b) =>
+        a is null ? b : b is null ? a : (a > b ? a : b);
 }

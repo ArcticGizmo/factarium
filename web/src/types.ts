@@ -56,27 +56,49 @@ export interface IssueFlowData {
 
 // --- /api/dashboards/repo-activity ---
 export interface RepoActivityTargets {
+  reviewCoveragePctMin: number | null;
+  medianPrLinesMax: number | null;
+  oldestOpenPrDaysMax: number | null;
+  abandonRatePctMax: number | null;
   unmappedIdentitiesMax: number | null;
+}
+
+// One repository's window figures for the per-repo table.
+export interface RepoRow {
+  repo: string;
+  commits: number;
+  prsMerged: number;
+  reviewCoveragePct: number;
+  medianPrLines: number;
+  avgReviewLatencyHours: number | null;
 }
 
 export interface RepoActivityData {
   windowDays: number;
   totals: {
-    commits: number;
-    prsOpened: number;
+    reviewCoveragePct: number;
+    medianPrLines: number;
+    reviewDepth: number;
+    abandonRatePct: number;
+    oldestOpenPrDays: number;
+    openPrs: number;
     prsMerged: number;
     repositories: number;
-    people: number;
     unmappedIdentities: number;
   };
-  // Prior window, for the volume-tile deltas (entity counts have no previous).
-  previous: { commits: number; prsOpened: number; prsMerged: number };
+  // Prior window, for the health-ratio tile deltas (current-state figures have no previous).
+  previous: {
+    reviewCoveragePct: number;
+    medianPrLines: number;
+    reviewDepth: number;
+    abandonRatePct: number;
+  };
   targets: RepoActivityTargets;
-  commitsByDay: DayPoint[];
-  prsOpenedByDay: DayPoint[];
-  prsMergedByDay: DayPoint[];
   reviewLatencyByDay: DayPoint[];
-  commitsByActor: LabelValue[];
+  coverageByDay: DayPoint[];
+  prSizeDistribution: LabelValue[];
+  reviewsByReviewer: LabelValue[];
+  repoTable: RepoRow[];
 }
 
 // --- /api/dashboards/delivery ---
@@ -144,6 +166,8 @@ export interface Person {
 export interface GitHubConfig {
   org: string | null;
   repos: string[];
+  // ISO date; the historical floor for the first sync (commits before / PRs inactive since).
+  syncSince: string | null;
 }
 
 export interface JiraConfig {

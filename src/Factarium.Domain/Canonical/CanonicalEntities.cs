@@ -49,6 +49,19 @@ public class CanonicalPullRequest
     public DateTimeOffset? CreatedAt { get; set; }
     public DateTimeOffset? MergedAt { get; set; }
     public DateTimeOffset? ClosedAt { get; set; }
+
+    // Diff stats from the PR detail endpoint (null when synced before these were captured).
+    /// <summary>Lines added by the PR.</summary>
+    public int? Additions { get; set; }
+
+    /// <summary>Lines removed by the PR.</summary>
+    public int? Deletions { get; set; }
+
+    /// <summary>Files touched by the PR.</summary>
+    public int? ChangedFiles { get; set; }
+
+    /// <summary>Inline review comments left on the PR — a proxy for review depth.</summary>
+    public int? ReviewCommentCount { get; set; }
 }
 
 /// <summary>
